@@ -1,0 +1,31 @@
+{
+  "name": "vane",
+  "version": "0.1.0",
+  "description": "A prediction-market trading agent with no server. Lives on-chain and is woken by the Somnia chain itself.",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "spike:deploy": "hardhat run scripts/spike-deploy.ts --network shannon",
+    "spike:arm": "hardhat run scripts/spike-arm.ts --network shannon",
+    "spike:check": "hardhat run scripts/spike-check.ts --network shannon"
+  },
+  "author": "Oluwasogo \"Israel\" Ajala (Rising Technology)",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.1.0",
+    "@nomicfoundation/hardhat-ethers": "^3.1.0",
+    "@nomicfoundation/hardhat-network-helpers": "^1.1.2",
+    "@types/chai": "^4.3.20",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^26.1.2",
+    "chai": "^4.5.0",
+    "dotenv": "^17.4.2",
+    "ethers": "^6.15.0",
+    "hardhat": "^2.29.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.5",
+    "typescript": "^5.9.3"
+  }
+}
