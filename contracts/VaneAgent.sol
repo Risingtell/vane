@@ -40,6 +40,9 @@ contract VaneAgent is SomniaEventHandler {
     /// @dev Same address on Shannon and mainnet, so it is fixed rather than configured.
     address public constant MARKETS_MODULE = 0x3ecC694Cef705358864a646142ac17A90E29e388;
 
+    /// @notice Ceiling on tracked order ids, so one cancel batch always fits in a block.
+    uint256 public constant MAX_TRACKED_ORDERS = 48;
+
     // ------------------------------------------------------------------- storage
 
     /// @notice Allowed to trigger trading, never to move funds. The owner can clear it.
@@ -118,7 +121,7 @@ contract VaneAgent is SomniaEventHandler {
     event WokenByChain(address emitter, uint256 blockNumber);
     event StrategySet(uint256 limitPrice, uint8 orderType);
     event PendingMarketSet(bytes32 indexed marketId, address market);
-    event Reclaimed(address indexed pool, uint256 orderCount);
+    event Reclaimed(address indexed pool, uint256 orderCount, uint256 collateralFreed);
     event ReclaimSkipped(address indexed pool, string reason);
     event Redeemed(bytes32 indexed marketId, uint8 outcomeIdx, uint256 amount);
     event PositionsMinted(address indexed pool, uint256 amount);
@@ -360,8 +363,9 @@ contract VaneAgent is SomniaEventHandler {
             }
             lastTradeAt = block.timestamp;
             // Remembered so escrow can be released later. An order that rests and then
-            // expires keeps its collateral until something cancels it.
-            if (orderId != 0) openOrderIds.push(orderId);
+            // expires keeps its collateral until something cancels it. Capped so the
+            // cancel batch cannot grow past what fits in one transaction.
+            if (orderId != 0 && openOrderIds.length < MAX_TRACKED_ORDERS) openOrderIds.push(orderId);
             emit Traded(pool, kind, price, quantity, orderId);
         } catch {
             emit TradeSkipped(pool, "pool rejected the order");
@@ -419,18 +423,39 @@ contract VaneAgent is SomniaEventHandler {
             return;
         }
 
-        uint128[] memory ids = openOrderIds;
-        // Cleared before the call so a pool that reverts cannot strand the list.
-        delete openOrderIds;
+        // The pool SKIPS orders that have not expired yet rather than failing, so a call
+        // can succeed and free nothing at all. Measure the collateral instead of trusting
+        // the call, and only forget the ids once their escrow is actually back. Clearing
+        // optimistically loses the orders and strands the money in them for good.
+        uint256 before = collateral.balanceOf(address(this));
 
-        try IBinaryPool(pool).cancelExpiredOrders(ids) {
+        try IBinaryPool(pool).cancelExpiredOrders(openOrderIds) {
+            uint256 freed = collateral.balanceOf(address(this)) - before;
+            if (freed == 0) {
+                emit ReclaimSkipped(pool, "nothing had expired yet");
+                return;
+            }
             unchecked {
                 reclaimCount++;
             }
-            emit Reclaimed(pool, n);
+            delete openOrderIds;
+            emit Reclaimed(pool, n, freed);
         } catch {
             emit ReclaimSkipped(pool, "pool rejected the cancel");
         }
+    }
+
+    /// @notice Drop the recorded order ids without touching the pool.
+    /// @dev An escape hatch for the awkward case where some of the batch has expired and
+    ///      some has not. Every id is also in a Traded event, so anyone can always call
+    ///      cancelExpiredOrders on the pool directly with them.
+    function forgetOrders() external onlyOwner {
+        delete openOrderIds;
+    }
+
+    /// @notice How many order ids are currently being tracked for reclaim.
+    function openOrderCount() external view returns (uint256) {
+        return openOrderIds.length;
     }
 
     /// @notice Turn a settled position back into collateral.

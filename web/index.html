@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vane — a trading agent with no server</title>
+<meta name="description" content="A prediction-market trading agent that lives on-chain. The Somnia chain itself wakes it to trade DreamDEX event contracts. No bot, no server, no keeper." />
+<style>
+  :root{
+    --ink:#0A0E14; --ink2:#111823; --line:#1E2836; --line2:#2B3A4D;
+    --text:#E6EDF5; --muted:#8296AC; --dim:#5B6E85;
+    --signal:#FFB020; --signal2:#FFC957;
+    --up:#2ED573; --down:#FF4757; --live:#2ED573;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --measure:1280px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--ink);color:var(--text);font-family:var(--sans);line-height:1.5;
+       font-size:16px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--measure);margin:0 auto;padding:0 28px}
+  .band{border-bottom:1px solid var(--line)}
+  .band.alt{background:var(--ink2)}
+  a{color:var(--signal);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ---- header ---- */
+  header{padding:22px 0}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:12px}
+  .mark{width:30px;height:30px;flex:none}
+  .brand b{font-size:20px;letter-spacing:.22em;text-transform:uppercase;font-weight:700}
+  .livepill{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    border:1px solid var(--line2);border-radius:999px;padding:6px 12px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+  .dot.on{background:var(--live);box-shadow:0 0 0 3px rgba(46,213,115,.16)}
+  .dot.off{background:var(--down);box-shadow:0 0 0 3px rgba(255,71,87,.16)}
+
+  /* ---- hero ---- */
+  .hero{padding:76px 0 66px}
+  h1{font-size:clamp(38px,6.4vw,84px);line-height:1.02;letter-spacing:-.025em;font-weight:800;
+     text-transform:uppercase;max-width:16ch}
+  h1 .accent{color:var(--signal)}
+  .lede{margin-top:24px;max-width:60ch;font-size:clamp(16px,1.5vw,19px);color:var(--muted)}
+  .cta{margin-top:34px;display:flex;gap:12px;flex-wrap:wrap}
+  .btn{display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;padding:13px 20px;border:1px solid var(--line2);color:var(--text);
+    background:transparent;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--signal);color:var(--signal);text-decoration:none}
+  .btn.primary{background:var(--signal);border-color:var(--signal);color:#160E00;font-weight:700}
+  .btn.primary:hover{background:var(--signal2);border-color:var(--signal2);color:#160E00}
+  .btn[disabled]{opacity:.45;cursor:not-allowed}
+
+  /* ---- section furniture ---- */
+  section{padding:58px 0}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--signal);margin-bottom:14px}
+  h2{font-size:clamp(24px,3vw,38px);letter-spacing:-.015em;text-transform:uppercase;font-weight:800}
+  .sub{margin-top:12px;color:var(--muted);max-width:66ch}
+
+  /* ---- grids ---- */
+  .grid{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);margin-top:30px}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .cell{background:var(--ink);padding:22px}
+  .band.alt .cell{background:var(--ink2)}
+  .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .v{font-family:var(--mono);font-size:clamp(20px,2.4vw,30px);margin-top:9px;word-break:break-all;line-height:1.2}
+  .v.sm{font-size:13px;line-height:1.6}
+  .note{font-size:12px;color:var(--dim);margin-top:8px}
+
+  /* ---- proof ---- */
+  .proof{border:1px solid var(--line2);padding:clamp(22px,3vw,34px);margin-top:30px;
+    background:linear-gradient(180deg,rgba(255,176,32,.05),transparent 62%)}
+  .proofline{font-size:clamp(18px,2.3vw,26px);font-weight:700;letter-spacing:-.01em}
+  .mono{font-family:var(--mono)}
+
+  /* ---- table ---- */
+  .tablewrap{overflow-x:auto;margin-top:26px;border:1px solid var(--line)}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-family:var(--mono);font-size:13px}
+  th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--dim);font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:400}
+  tbody tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;padding:2px 8px;border:1px solid var(--line2);font-size:11px;
+    letter-spacing:.08em;text-transform:uppercase}
+  .tag.trade{color:var(--signal);border-color:rgba(255,176,32,.45)}
+  .tag.wake{color:var(--muted)}
+  .tag.money{color:var(--up);border-color:rgba(46,213,115,.45)}
+  .tag.skip{color:var(--dim)}
+
+  ol.steps{margin-top:26px;list-style:none;counter-reset:s}
+  ol.steps li{counter-increment:s;padding:18px 0 18px 56px;border-bottom:1px solid var(--line);position:relative}
+  ol.steps li:last-child{border-bottom:none}
+  ol.steps li::before{content:counter(s);position:absolute;left:0;top:16px;font-family:var(--mono);
+    font-size:12px;color:var(--signal);border:1px solid var(--line2);width:30px;height:30px;
+    display:grid;place-items:center}
+  ol.steps b{display:block;margin-bottom:5px}
+  ol.steps span{color:var(--muted);font-size:14px}
+
+  footer{padding:44px 0;color:var(--dim);font-size:13px}
+  .footgrid{display:flex;gap:32px;flex-wrap:wrap;justify-content:space-between}
+  .msg{margin-top:14px;font-family:var(--mono);font-size:12px;min-height:18px;color:var(--muted)}
+  .msg.ok{color:var(--up)} .msg.bad{color:var(--down)}
+
+  @media(max-width:900px){
+    .g4{grid-template-columns:repeat(2,1fr)}
+    .g3{grid-template-columns:1fr}
+  }
+  @media(max-width:620px){
+    .wrap{padding:0 18px}
+    .g4,.g2{grid-template-columns:1fr}
+    .hero{padding:52px 0 44px}
+    section{padding:42px 0}
+  }
+</style>
+</head>
+<body>
+
+<div class="band">
+  <div class="wrap">
+    <header>
+      <div class="bar">
+        <div class="brand">
+          <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <path d="M16 2 L27 13 L20 13 L20 30 L12 30 L12 13 L5 13 Z" fill="#FFB020"/>
+          </svg>
+          <b>Vane</b>
+        </div>
+        <div class="livepill"><span class="dot" id="netdot"></span><span id="netstate">connecting</span></div>
+      </div>
+    </header>
+  </div>
+</div>
+
+<div class="band">
+  <div class="wrap hero">
+    <h1>A trading agent with <span class="accent">no server</span></h1>
+    <p class="lede">
+      Vane lives on-chain as a Solidity contract. The Somnia chain itself wakes it to trade
+      DreamDEX event contracts, reclaim its escrow and redeem what it wins. There is no bot
+      process, no cron and no keeper. Close this page and it keeps going.
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="#proof">See the proof</a>
+      <a class="btn" id="explorerLink" href="#" target="_blank" rel="noopener">Agent on explorer</a>
+      <button class="btn" id="faucetBtn">Get test tUSDC</button>
+    </div>
+    <div class="msg" id="faucetMsg"></div>
+  </div>
+</div>
+
+<div class="band alt" id="proof">
+  <div class="wrap">
+    <section>
+      <div class="eyebrow">The proof</div>
+      <h2>The chain is the keeper</h2>
+      <p class="sub">
+        Somnia can store an event subscription in chain state and invoke a contract when a
+        matching log lands. These numbers come from the node itself, not from anything we run.
+      </p>
+
+      <div class="proof">
+        <div class="proofline" id="proofLine">Checking the node for a live subscription…</div>
+        <div class="note mono" id="proofDetail"></div>
+      </div>
+
+      <div class="grid g4">
+        <div class="cell"><div class="k">Subscription</div><div class="v" id="subId">—</div>
+          <div class="note">Held in chain state</div></div>
+        <div class="cell"><div class="k">Times woken</div><div class="v" id="wakeCount">—</div>
+          <div class="note">By the chain, unprompted</div></div>
+        <div class="cell"><div class="k">Orders placed</div><div class="v" id="tradeCount">—</div>
+          <div class="note">On the DreamDEX book</div></div>
+        <div class="cell"><div class="k">Gas per wake</div><div class="v" id="gasLimit">—</div>
+          <div class="note">Billed to the subscription owner</div></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <div class="eyebrow">The agent</div>
+      <h2>One agent, one owner</h2>
+      <p class="sub">
+        DreamDEX has no way for a third party to trade event contracts on your behalf, so Vane
+        holds the collateral and removes the danger instead. Withdrawal is owner-only and
+        unconditional. The operator can trade and nothing else.
+      </p>
+
+      <div class="grid g4">
+        <div class="cell"><div class="k">Free collateral</div><div class="v" id="balance">—</div>
+          <div class="note">tUSDC in the agent</div></div>
+        <div class="cell"><div class="k">Escrow reclaimed</div><div class="v" id="reclaimCount">—</div>
+          <div class="note">Freed from expired orders</div></div>
+        <div class="cell"><div class="k">Positions redeemed</div><div class="v" id="redeemCount">—</div>
+          <div class="note">Settled, then claimed</div></div>
+        <div class="cell"><div class="k">Trading</div><div class="v" id="tradingState">—</div>
+          <div class="note">Owner can halt at any time</div></div>
+      </div>
+
+      <div class="grid g2">
+        <div class="cell"><div class="k">Agent contract</div><div class="v sm" id="agentAddr">—</div></div>
+        <div class="cell"><div class="k">Risk policy</div><div class="v sm" id="policy">—</div></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="band alt">
+  <div class="wrap">
+    <section>
+      <div class="eyebrow">Live market</div>
+      <h2>What it is trading</h2>
+      <p class="sub">
+        DreamDEX event contracts are binary up or down markets on a real on-chain order book.
+        Up and Down share one book, and a Down price is always 1 minus the Up price.
+      </p>
+      <div class="grid g3">
+        <div class="cell"><div class="k">Window</div><div class="v sm" id="mktQuestion">—</div></div>
+        <div class="cell"><div class="k">Settles in</div><div class="v" id="mktCountdown">—</div></div>
+        <div class="cell"><div class="k">Last price</div><div class="v" id="mktPrice">—</div>
+          <div class="note">Probability of Up</div></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <section>
+      <div class="eyebrow">On-chain activity</div>
+      <h2>Everything it has done</h2>
+      <p class="sub">Read straight from the agent's own events on Shannon.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Event</th><th>Detail</th><th>Block</th></tr></thead>
+          <tbody id="feed"><tr><td colspan="3" style="color:var(--dim)">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="band alt">
+  <div class="wrap">
+    <section>
+      <div class="eyebrow">How it works</div>
+      <h2>Four moving parts</h2>
+      <ol class="steps">
+        <li><b>A subscription is stored in chain state</b>
+          <span>The owner registers a filter on DreamDEX market events with the reactivity
+          precompile at 0x0100, naming the agent as the handler.</span></li>
+        <li><b>The chain calls the agent</b>
+          <span>When a matching log lands, the node invokes onEvent on the contract. Nothing
+          off-chain is involved, and there is nothing to keep running.</span></li>
+        <li><b>It trades inside a policy it cannot exceed</b>
+          <span>A per-window budget, a reserve it will never spend, a cooldown, and an
+          allowlist of pools. Everything is checked on-chain before an order goes out.</span></li>
+        <li><b>It gets the money back</b>
+          <span>Expired orders hold escrow until something cancels them, and winnings must be
+          claimed. A scheduled one-shot wake does both, and either can be triggered by anyone
+          so funds are never stranded.</span></li>
+      </ol>
+    </section>
+  </div>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <footer>
+      <div class="footgrid">
+        <div>
+          <div class="k">Network</div>
+          <div class="mono" style="margin-top:6px">Somnia Shannon testnet · chain 50312</div>
+        </div>
+        <div>
+          <div class="k">Contracts</div>
+          <div class="mono" style="margin-top:6px">
+            <a id="factoryLink" href="#" target="_blank" rel="noopener">Factory</a> ·
+            <a id="agentLink" href="#" target="_blank" rel="noopener">Agent</a> ·
+            <a href="https://shannon-explorer.somnia.network/" target="_blank" rel="noopener">Explorer</a>
+          </div>
+        </div>
+        <div>
+          <div class="k">Built for</div>
+          <div class="mono" style="margin-top:6px">Somnia × DreamDEX Event Contracts Hackathon</div>
+        </div>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+// ---------------------------------------------------------------- configuration
+const CFG = {
+  rpc: "https://dream-rpc.somnia.network",
+  indexer: "https://dev.smk.somnia.host/v1/graphql",
+  explorer: "https://shannon-explorer.somnia.network",
+  tusdc: "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
+  // Updated by scripts/deploy-live.ts. See web/config.js if present.
+  agent:    window.VANE_AGENT   || "0x0006b8F2757aB6008ea744C8e6357951d63257F9",
+  factory:  window.VANE_FACTORY || "0x23f338ccf8Ee60f2B323f0e7490bf97216eC9619",
+  operator: window.VANE_OPERATOR|| "0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053",
+};
+
+const AGENT_ABI = [
+  "function wakeCount() view returns (uint256)",
+  "function tradeCount() view returns (uint256)",
+  "function reclaimCount() view returns (uint256)",
+  "function redeemCount() view returns (uint256)",
+  "function tradingEnabled() view returns (bool)",
+  "function maxPerWindow() view returns (uint256)",
+  "function reserve() view returns (uint256)",
+  "function activePool() view returns (address)",
+  "event WokenByChain(address emitter, uint256 blockNumber)",
+  "event Traded(address indexed pool, uint8 kind, uint256 price, uint256 quantity, uint128 orderId)",
+  "event TradeSkipped(address indexed pool, string reason)",
+  "event Reclaimed(address indexed pool, uint256 orderCount)",
+  "event Redeemed(bytes32 indexed marketId, uint8 outcomeIdx, uint256 amount)",
+  "event PositionsMinted(address indexed pool, uint256 amount)",
+  "event Deposited(address indexed from, uint256 amount)",
+  "event Withdrawn(address indexed to, uint256 amount)",
+];
+const ERC20_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function faucet(uint256 amount)",
+];
+
+const provider = new ethers.JsonRpcProvider(CFG.rpc);
+const agent = new ethers.Contract(CFG.agent, AGENT_ABI, provider);
+const tusdc = new ethers.Contract(CFG.tusdc, ERC20_ABI, provider);
+
+const $ = (id) => document.getElementById(id);
+const usd = (v) => (Number(ethers.formatUnits(v, 6))).toLocaleString(undefined, {maximumFractionDigits:2});
+
+// -------------------------------------------------------------------- the proof
+// Asking the NODE what subscriptions exist is the whole claim: if the chain holds one,
+// then nothing of ours has to be running for the agent to act.
+async function loadProof() {
+  try {
+    const ids = await provider.send("somnia_reactivityGetSubscriptions", [CFG.operator]);
+    if (!ids || ids.length === 0) {
+      $("proofLine").textContent = "No subscription is armed right now.";
+      $("proofDetail").textContent =
+        "The agent only acts while a subscription is stored in chain state. Arming costs STT, so it is " +
+        "switched off between sessions. Everything below is what it did while it was armed.";
+      $("subId").textContent = "none";
+      return;
+    }
+    const id = ids[0];
+    const info = await provider.send("somnia_reactivityGetSubscriptionInfo", [id]);
+    const s = Array.isArray(info) ? info[0] : info;
+    $("subId").textContent = "#" + BigInt(id).toString();
+    $("gasLimit").textContent = s && s.gas_limit ? (BigInt(s.gas_limit) / 1000000n) + "M" : "—";
+    $("proofLine").textContent = "The chain is holding a live subscription for this agent.";
+    $("proofDetail").textContent =
+      "handler " + (s && s.handler_contract_address ? s.handler_contract_address : CFG.agent) +
+      "  ·  selector " + (s && s.handler_function_selector ? s.handler_function_selector : "0x53edf33d") +
+      "  ·  emitter " + (s && s.emitter ? s.emitter : "—");
+  } catch (e) {
+    $("proofLine").textContent = "Could not reach the node.";
+    $("proofDetail").textContent = String(e.message || e).slice(0, 160);
+  }
+}
+
+// -------------------------------------------------------------------- agent state
+async function loadAgent() {
+  try {
+    const [wake, trades, reclaims, redeems, trading, maxW, reserve, bal] = await Promise.all([
+      agent.wakeCount(), agent.tradeCount(), agent.reclaimCount(), agent.redeemCount(),
+      agent.tradingEnabled(), agent.maxPerWindow(), agent.reserve(), tusdc.balanceOf(CFG.agent),
+    ]);
+    $("wakeCount").textContent = wake.toString();
+    $("tradeCount").textContent = trades.toString();
+    $("reclaimCount").textContent = reclaims.toString();
+    $("redeemCount").textContent = redeems.toString();
+    $("balance").textContent = usd(bal);
+    $("tradingState").textContent = trading ? "Live" : "Halted";
+    $("policy").textContent = usd(maxW) + " tUSDC per window · " + usd(reserve) + " tUSDC reserve";
+    $("agentAddr").textContent = CFG.agent;
+    $("netdot").className = "dot on";
+    $("netstate").textContent = "shannon · live";
+  } catch (e) {
+    $("netdot").className = "dot off";
+    $("netstate").textContent = "node unreachable";
+  }
+}
+
+// ------------------------------------------------------------------- live market
+async function loadMarket() {
+  const now = Math.floor(Date.now() / 1000);
+  const q = `query { Market(where: {marketType: {_eq: BINARY}, clobStatus: {_eq: Trading},
+    expiry: {_gt: "${now}"}, question: {_ilike: "%opening price%"}},
+    order_by: {expiry: asc}, limit: 1) { question expiry lastPrice } }`;
+  try {
+    const r = await fetch(CFG.indexer, {
+      method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({query: q}),
+    });
+    const j = await r.json();
+    const m = j.data && j.data.Market && j.data.Market[0];
+    if (!m) { $("mktQuestion").textContent = "no window open"; return; }
+    $("mktQuestion").textContent = m.question;
+    $("mktPrice").textContent = m.lastPrice ? (Number(m.lastPrice) / 1e6).toFixed(2) : "—";
+    startCountdown(Number(m.expiry));
+  } catch (e) {
+    $("mktQuestion").textContent = "indexer unreachable";
+  }
+}
+
+let countdownTimer = null;
+function startCountdown(expiry) {
+  if (countdownTimer) clearInterval(countdownTimer);
+  const tick = () => {
+    const left = expiry - Math.floor(Date.now() / 1000);
+    if (left <= 0) { $("mktCountdown").textContent = "settling"; clearInterval(countdownTimer); return; }
+    const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), s = left % 60;
+    $("mktCountdown").textContent = (h ? h + "h " : "") + m + "m " + String(s).padStart(2, "0") + "s";
+  };
+  tick();
+  countdownTimer = setInterval(tick, 1000);
+}
+
+// --------------------------------------------------------------------- the feed
+const TAGS = {
+  Traded: "trade", Reclaimed: "money", Redeemed: "money", PositionsMinted: "money",
+  Deposited: "money", Withdrawn: "money", WokenByChain: "wake", TradeSkipped: "skip",
+};
+function describe(name, args) {
+  switch (name) {
+    case "Traded": return "bought " + (Number(args.quantity) / 1e6).toFixed(2) +
+      " at " + (Number(args.price) / 1e6).toFixed(2);
+    case "Reclaimed": return "freed escrow from " + args.orderCount.toString() + " expired order(s)";
+    case "Redeemed": return "claimed " + usd(args.amount) + " tUSDC from a settled market";
+    case "PositionsMinted": return "minted a complete set of " + usd(args.amount) + " tUSDC";
+    case "Deposited": return "deposit of " + usd(args.amount) + " tUSDC";
+    case "Withdrawn": return "withdrawal of " + usd(args.amount) + " tUSDC";
+    case "WokenByChain": return "the chain called the agent";
+    case "TradeSkipped": return "stood down: " + args.reason;
+    default: return "";
+  }
+}
+async function loadFeed() {
+  const body = $("feed");
+  try {
+    const head = await provider.getBlockNumber();
+    let rows = [];
+    // The node caps getLogs at 1000 blocks per call, so walk back in windows.
+    for (let i = 0; i < 12 && rows.length < 14; i++) {
+      const to = head - i * 1000, from = to - 999;
+      let logs = [];
+      try { logs = await provider.getLogs({address: CFG.agent, fromBlock: from, toBlock: to}); }
+      catch (e) { continue; }
+      for (const l of logs.reverse()) {
+        try {
+          const d = agent.interface.parseLog(l);
+          if (!d) continue;
+          rows.push({name: d.name, text: describe(d.name, d.args), blk: l.blockNumber, tx: l.transactionHash});
+        } catch (e) {}
+      }
+    }
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="3" style="color:var(--dim)">No events in the recent window. ' +
+        'Somnia produces about ten blocks a second, so this only reaches back a few minutes.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.slice(0, 14).map((r) =>
+      '<tr><td><span class="tag ' + (TAGS[r.name] || "") + '">' + r.name + '</span></td>' +
+      '<td style="white-space:normal;color:var(--muted)">' + r.text + '</td>' +
+      '<td><a href="' + CFG.explorer + '/tx/' + r.tx + '" target="_blank" rel="noopener">' + r.blk + '</a></td></tr>'
+    ).join("");
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="3" style="color:var(--down)">Could not read the chain.</td></tr>';
+  }
+}
+
+// --------------------------------------------------------------------- faucet
+// tUSDC carries its own faucet on testnet, so anyone can self-onboard without asking.
+$("faucetBtn").addEventListener("click", async () => {
+  const msg = $("faucetMsg");
+  if (!window.ethereum) {
+    msg.className = "msg bad";
+    msg.textContent = "No wallet found. Install a wallet and add Somnia Shannon (chain 50312) to claim tUSDC.";
+    return;
+  }
+  try {
+    msg.className = "msg"; msg.textContent = "Confirm in your wallet…";
+    await window.ethereum.request({method: "eth_requestAccounts"});
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain", params: [{chainId: "0xC488"}],
+    }).catch(() => {});
+    const bp = new ethers.BrowserProvider(window.ethereum);
+    const signer = await bp.getSigner();
+    const t = new ethers.Contract(CFG.tusdc, ERC20_ABI, signer);
+    const tx = await t.faucet(ethers.parseUnits("10000", 6));
+    msg.textContent = "Sent. Waiting for the receipt…";
+    await tx.wait();
+    msg.className = "msg ok";
+    msg.textContent = "10,000 tUSDC is in your wallet. You can now fund an agent of your own.";
+  } catch (e) {
+    msg.className = "msg bad";
+    msg.textContent = (e.shortMessage || e.message || String(e)).slice(0, 150);
+  }
+});
+
+// ----------------------------------------------------------------------- boot
+$("explorerLink").href = CFG.explorer + "/address/" + CFG.agent;
+$("agentLink").href = CFG.explorer + "/address/" + CFG.agent;
+$("factoryLink").href = CFG.explorer + "/address/" + CFG.factory;
+
+function refresh() { loadProof(); loadAgent(); loadMarket(); loadFeed(); }
+refresh();
+setInterval(() => { loadProof(); loadAgent(); }, 15000);
+setInterval(loadFeed, 30000);
+setInterval(loadMarket, 60000);
+</script>
+</body>
+</html>

@@ -89,6 +89,12 @@ describe("VaneAgent getting money back", () => {
     return tx;
   }
 
+  /// Orders carry a 300s expiry, and the pool only releases orders past it.
+  async function passExpiry() {
+    await network.provider.send("evm_increaseTime", [400]);
+    await network.provider.send("evm_mine", []);
+  }
+
   describe("reclaiming escrow", () => {
     it("frees collateral that expired orders were holding", async () => {
       const f = await deploy();
@@ -96,6 +102,7 @@ describe("VaneAgent getting money back", () => {
       // Escrow is locked in the pool until something cancels the order.
       expect(await f.collateral.balanceOf(f.agentAddr)).to.be.lessThan(100n * ONE);
 
+      await passExpiry();
       await expect(as$(f.agent, f.stranger).reclaimExpired(f.poolAddr)).to.emit(f.agent, "Reclaimed");
       expect(await f.collateral.balanceOf(f.agentAddr)).to.equal(100n * ONE);
     });
@@ -104,9 +111,40 @@ describe("VaneAgent getting money back", () => {
       const f = await deploy();
       await as$(f.agent, f.operator).poke(f.poolAddr);
       await as$(f.agent, f.user).setOperator(ethers.ZeroAddress);
+      await passExpiry();
       // A stranger can free the money, and it returns to the AGENT, not to the caller.
       await as$(f.agent, f.stranger).reclaimExpired(f.poolAddr);
       expect(await f.collateral.balanceOf(f.agentAddr)).to.equal(100n * ONE);
+    });
+
+    it("does NOT forget orders when nothing had expired yet", async () => {
+      const f = await deploy();
+      await as$(f.agent, f.operator).poke(f.poolAddr);
+      const locked = await f.collateral.balanceOf(f.agentAddr);
+      expect(await f.agent.openOrderCount()).to.equal(1n);
+
+      // Found on live Shannon: the pool SKIPS unexpired orders and still returns success.
+      // Clearing the tracked ids here would strand that collateral permanently.
+      await expect(as$(f.agent, f.stranger).reclaimExpired(f.poolAddr)).to.emit(f.agent, "ReclaimSkipped");
+      expect(await f.agent.openOrderCount()).to.equal(1n);
+      expect(await f.collateral.balanceOf(f.agentAddr)).to.equal(locked);
+
+      // Once it really has expired the same call works and the money comes back.
+      await passExpiry();
+      await as$(f.agent, f.stranger).reclaimExpired(f.poolAddr);
+      expect(await f.agent.openOrderCount()).to.equal(0n);
+      expect(await f.collateral.balanceOf(f.agentAddr)).to.equal(100n * ONE);
+    });
+
+    it("reports how much collateral it actually freed", async () => {
+      const f = await deploy();
+      await as$(f.agent, f.operator).poke(f.poolAddr);
+      const spent = 100n * ONE - (await f.collateral.balanceOf(f.agentAddr));
+      await passExpiry();
+      const rc = await (await as$(f.agent, f.stranger).reclaimExpired(f.poolAddr)).wait();
+      const ev = rc.logs.map((l: any) => { try { return f.agent.interface.parseLog(l); } catch { return null; } })
+        .find((d: any) => d && d.name === "Reclaimed");
+      expect(ev.args.collateralFreed).to.equal(spent);
     });
 
     it("says so plainly when there is nothing to reclaim", async () => {
@@ -117,6 +155,7 @@ describe("VaneAgent getting money back", () => {
     it("clears the recorded ids so a second reclaim is a no-op", async () => {
       const f = await deploy();
       await as$(f.agent, f.operator).poke(f.poolAddr);
+      await passExpiry();
       await as$(f.agent, f.stranger).reclaimExpired(f.poolAddr);
       await expect(as$(f.agent, f.stranger).reclaimExpired(f.poolAddr)).to.emit(f.agent, "ReclaimSkipped");
     });
@@ -204,6 +243,7 @@ describe("VaneAgent getting money back", () => {
     it("reclaims and redeems instead of trading", async () => {
       const f = await deploy();
       await as$(f.agent, f.operator).poke(f.poolAddr);
+      await passExpiry();
       const tradesBefore = await f.agent.tradeCount();
 
       await f.outcome.mint(f.agentAddr, f.YES, 5n * ONE);

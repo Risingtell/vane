@@ -1,6 +1,19 @@
 node_modules/
 artifacts/
 cache/
+typechain-types/
+
+# Secrets. Never commit any of these.
 .env
+.env.*
 *.local
 .throwaway-key.local
+keys/
+*.pem
+
+# Internal working documents. Useful while building, not for judges.
+SUBMISSION.md
+DEMO_SCRIPT.md
+VIDEO_SCRIPT.md
+PLAN.md
+NOTES.md

@@ -17,6 +17,7 @@ contract MockBinaryPool {
         uint256 price;
         uint256 quantity;
         uint256 escrow;
+        uint256 expiresAt;
         bool cancelled;
     }
 
@@ -38,7 +39,7 @@ contract MockBinaryPool {
         uint8 kind,
         uint256 price,
         uint256 quantity,
-        uint64,
+        uint64 expireTimestampNs,
         uint8,
         uint8,
         address,
@@ -47,10 +48,13 @@ contract MockBinaryPool {
     ) external payable returns (bool success, uint128 id) {
         // Split out so the nine parameters and the body do not share a stack frame,
         // which overflows the EVM's 16-slot reach without viaIR.
-        return _record(kind, price, quantity);
+        return _record(kind, price, quantity, expireTimestampNs / 1e9);
     }
 
-    function _record(uint8 kind, uint256 price, uint256 quantity) private returns (bool, uint128) {
+    function _record(uint8 kind, uint256 price, uint256 quantity, uint256 expiresAt)
+        private
+        returns (bool, uint128)
+    {
         require(!rejectEverything, "pool rejected");
 
         // Cost of the position, in collateral. Pulled from the caller, exactly as the
@@ -64,6 +68,7 @@ contract MockBinaryPool {
                 price: price,
                 quantity: quantity,
                 escrow: (quantity * price) / 1e6,
+                expiresAt: expiresAt,
                 cancelled: false
             })
         );
@@ -88,6 +93,10 @@ contract MockBinaryPool {
             if (idx >= orders.length) continue;
             Order storage o = orders[idx];
             if (o.cancelled || o.escrow == 0) continue;
+            // The real pool only releases orders that are actually PAST their expiry, and
+            // silently skips the rest. A caller that assumes success freed something will
+            // forget live orders and strand their collateral.
+            if (block.timestamp < o.expiresAt) continue;
             uint256 amount = o.escrow;
             o.escrow = 0;
             o.cancelled = true;

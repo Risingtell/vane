@@ -1,0 +1,14 @@
+{
+  "name": "vane-agent",
+  "version": "0.1.0",
+  "description": "Run an on-chain trading agent for DreamDEX event contracts on Somnia. No server, no bot, no keeper.",
+  "type": "module",
+  "main": "index.js",
+  "bin": { "vane": "./cli.js" },
+  "files": ["index.js", "cli.js", "README.md"],
+  "keywords": ["somnia", "dreamdex", "prediction-markets", "event-contracts", "reactivity", "trading-agent"],
+  "author": "Oluwasogo \"Israel\" Ajala (Rising Technology)",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "peerDependencies": { "ethers": "^6.13.0" }
+}
