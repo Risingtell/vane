@@ -1,5 +1,8 @@
 # Vane
 
+[![CI](https://github.com/Risingtell/vane/actions/workflows/ci.yml/badge.svg)](https://github.com/Risingtell/vane/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **A prediction-market trading agent with no server, no bot process and no keeper.**
 It lives on-chain as a Solidity contract, and the Somnia chain itself wakes it to trade
 DreamDEX event contracts, reclaim its escrow and redeem what it wins.
