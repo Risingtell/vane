@@ -197,3 +197,55 @@ subscription, the agent contract holds no STT, and the kill switch works.
 | One wake (event mode, no re-subscribe) | ~0.00093 STT |
 | One binary order placement | ~3.95M gas |
 | Minimum balance to hold a subscription | 32 STT, chain-enforced |
+
+---
+
+# Day 3: the money comes back, proven live
+
+Both halves of "getting paid" now work against live Shannon.
+
+## Reclaiming escrow
+
+`cancelExpiredOrders(uint128[])` on the pool, ~517k gas for six orders, and it returns escrow to
+each order's own OWNER rather than to whoever calls. Ran it against the six dead orders the agent
+had left resting and recovered the full **50 tUSDC** (150.00005 back to 200.0).
+
+This is not optional housekeeping. An order past its `expireTimestampNs` still reads `status: Open`
+and keeps its collateral until something cancels it, so an agent that never reclaims slowly leaks
+its entire balance into dead orders.
+
+## Redeeming a settled position
+
+Full lifecycle on agent `0x0006b8F2757aB6008ea744C8e6357951d63257F9`: deposit 20 tUSDC, mint a
+complete set for 10, wait for the oracle to resolve the window, then `sweepSettled`. Result:
+**10 tUSDC back, `redeemCount` 1**, balance 10.0 to 20.0. A complete set is worth exactly what it
+cost, since one side pays 1 and the other 0.
+
+Order of operations that actually matters:
+
+1. `market.isResolved()` / `isVoided()` first. A voided market pays BOTH sides at 0.5, so both
+   positions must be claimed.
+2. Winner is the **argmax of `market.payoutNumerators()`**. `winningOutcome()` was removed in
+   settlement v3 and reverts.
+3. `outcomeToken.setOperator(module, true)` BEFORE redeeming: the module pulls the winning position
+   from the holder, so without the grant the redeem reverts. One grant covers every market.
+4. `module.redeem(operatorId, venueId, marketId, outcomeIdx, amount)`, keyed by **market id**, never
+   by pool, because pools are recycled onto the next window.
+
+## Complete sets are the only way to hold a position on an empty book
+
+The short rolling windows mostly have empty books, so a crossing order has nothing to fill against.
+`mintSet` needs no counterparty and is how a maker builds inventory, which makes it the reliable way
+to acquire a position for testing settlement.
+
+## Both reclaim and redeem are permissionless on purpose
+
+Neither depends on the operator still existing. If the operator disappears, any passer-by can still
+free the owner's collateral and claim their winnings, and both land in the agent rather than with
+the caller.
+
+## Indexer gap worth knowing
+
+The redemption is unambiguous on-chain (contract state and balance), but no `RedemptionRecord` row
+appeared in the indexer for it. That window came from the `Pricefeed test` series rather than the
+production one. For anything a judge will check, use a production-series market.

@@ -16,6 +16,8 @@ contract MockBinaryPool {
         uint8 kind;
         uint256 price;
         uint256 quantity;
+        uint256 escrow;
+        bool cancelled;
     }
 
     Order[] public orders;
@@ -55,7 +57,16 @@ contract MockBinaryPool {
         // real pool does.
         _pull((quantity * price) / 1e6);
 
-        orders.push(Order({trader: msg.sender, kind: kind, price: price, quantity: quantity}));
+        orders.push(
+            Order({
+                trader: msg.sender,
+                kind: kind,
+                price: price,
+                quantity: quantity,
+                escrow: (quantity * price) / 1e6,
+                cancelled: false
+            })
+        );
         return (true, nextOrderId++);
     }
 
@@ -67,6 +78,23 @@ contract MockBinaryPool {
     }
 
     function cancelOrder(uint128) external {}
+
+    /// @notice Release escrow back to each order's own OWNER, not to the caller.
+    /// @dev Callable by anyone on a real binary pool, which is what lets a permissionless
+    ///      reclaim free an agent's collateral even if its operator is gone.
+    function cancelExpiredOrders(uint128[] calldata orderIds) external {
+        for (uint256 i = 0; i < orderIds.length; i++) {
+            uint256 idx = uint256(orderIds[i]) - 1; // ids start at 1
+            if (idx >= orders.length) continue;
+            Order storage o = orders[idx];
+            if (o.cancelled || o.escrow == 0) continue;
+            uint256 amount = o.escrow;
+            o.escrow = 0;
+            o.cancelled = true;
+            (bool ok,) = collateral.call(abi.encodeWithSignature("transfer(address,uint256)", o.trader, amount));
+            require(ok, "refund failed");
+        }
+    }
 
     function mintSet(address, address, uint256) external {}
 

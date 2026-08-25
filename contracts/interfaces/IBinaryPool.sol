@@ -25,10 +25,46 @@ interface IBinaryPool {
 
     function cancelOrder(uint128 orderId) external;
 
+    /// @notice Release escrow held by orders that are past their expiry.
+    /// @dev Callable by ANYONE on a binary pool, and escrow returns to each order's own
+    ///      owner. This matters: an order past `expireTimestampNs` still reads
+    ///      `status: Open` and keeps its collateral locked until something calls this.
+    ///      Measured on a live pool: ~517k gas for six orders.
+    function cancelExpiredOrders(uint128[] calldata orderIds) external;
+
     /// @dev Collateral in, one YES and one NO out. Callable with both recipients set to self.
     function mintSet(address yesTo, address noTo, uint256 amount) external;
 
     function burnSet(uint256 amount) external;
+}
+
+/// @notice One binary market (one window). A pool is recycled onto the next window, so a
+///         market is identified by its own address and marketId, never by its pool.
+interface IBinaryMarket {
+    /// @dev Settlement v3 stores a payout VECTOR. `winningOutcome()` was removed and
+    ///      REVERTS on the deployed contract, so the winner is the argmax of this.
+    function payoutNumerators() external view returns (uint256[] memory);
+    function isResolved() external view returns (bool);
+    function isVoided() external view returns (bool);
+    function outcomeToken() external view returns (address);
+    function yesId() external view returns (uint256);
+    function noId() external view returns (uint256);
+}
+
+/// @notice The shared ERC-6909 singleton holding every market's YES and NO positions.
+interface IOutcomeToken6909 {
+    function balanceOf(address owner, uint256 id) external view returns (uint256);
+    /// @dev One grant covers every id and every market.
+    function setOperator(address spender, bool approved) external returns (bool);
+    function isOperator(address owner, address spender) external view returns (bool);
+}
+
+/// @notice BinaryMarketsModule, the redemption entry point.
+interface IBinaryMarketsModule {
+    /// @dev Pulls the winning position from the CALLER, which is why the caller must first
+    ///      make this module an operator on the ERC-6909 singleton.
+    function redeem(uint32 operatorId, bytes32 venueId, bytes32 marketId, uint8 outcomeIdx, uint256 amount)
+        external;
 }
 
 /// @notice Minimal ERC-20 surface. The testnet collateral (tUSDC) is 6 decimals,

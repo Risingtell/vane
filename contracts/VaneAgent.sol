@@ -2,7 +2,7 @@
 pragma solidity ^0.8.25;
 
 import {SomniaEventHandler} from "./interfaces/SomniaEventHandler.sol";
-import {IBinaryPool, IERC20} from "./interfaces/IBinaryPool.sol";
+import {IBinaryPool, IERC20, IBinaryMarket, IOutcomeToken6909, IBinaryMarketsModule} from "./interfaces/IBinaryPool.sol";
 
 /// @title VaneAgent
 /// @notice A prediction-market trading agent with no server, no bot and no keeper.
@@ -35,6 +35,10 @@ contract VaneAgent is SomniaEventHandler {
 
     /// @notice Collateral token for the venue (tUSDC on Shannon, 6 decimals).
     IERC20 public immutable collateral;
+
+    /// @notice DreamDEX BinaryMarketsModule, the redemption entry point.
+    /// @dev Same address on Shannon and mainnet, so it is fixed rather than configured.
+    address public constant MARKETS_MODULE = 0x3ecC694Cef705358864a646142ac17A90E29e388;
 
     // ------------------------------------------------------------------- storage
 
@@ -71,9 +75,33 @@ contract VaneAgent is SomniaEventHandler {
     ///      grid belongs to the venue and can differ per pool.
     uint256 public lotSize = 1000;
 
+    /// @notice Orders we placed that may still be holding escrow.
+    /// @dev Escrow does NOT come back on its own: an order past its expiry still reads
+    ///      Open and stays funded until `cancelExpiredOrders` is called. Without this the
+    ///      agent slowly leaks its balance into dead orders.
+    uint128[] public openOrderIds;
+
+    /// @notice Market the next scheduled wake should try to redeem.
+    address public pendingMarket;
+    bytes32 public pendingMarketId;
+
+    /// @notice Routing attribution passed to redeem. Zero matches the SDK default.
+    uint32 public redeemOperatorId;
+    bytes32 public redeemVenueId;
+
+    /// @notice Probability price for orders, scaled to collateral decimals. 0 uses the default.
+    uint256 public limitPrice;
+
+    /// @notice 0 LIMIT, 1 FILL_OR_KILL, 2 MARKET (immediate or cancel), 3 POST_ONLY.
+    /// @dev Defaults to 2 so orders actually CROSS and fill. A resting post-only bid never
+    ///      fills, which leaves nothing to settle and nothing to redeem.
+    uint8 public orderType = 2;
+
     uint256 public tradeCount;
     uint256 public wakeCount;
     uint256 public lastTradeAt;
+    uint256 public reclaimCount;
+    uint256 public redeemCount;
 
     // -------------------------------------------------------------------- events
 
@@ -88,6 +116,13 @@ contract VaneAgent is SomniaEventHandler {
     event Traded(address indexed pool, uint8 kind, uint256 price, uint256 quantity, uint128 orderId);
     event TradeSkipped(address indexed pool, string reason);
     event WokenByChain(address emitter, uint256 blockNumber);
+    event StrategySet(uint256 limitPrice, uint8 orderType);
+    event PendingMarketSet(bytes32 indexed marketId, address market);
+    event Reclaimed(address indexed pool, uint256 orderCount);
+    event ReclaimSkipped(address indexed pool, string reason);
+    event Redeemed(bytes32 indexed marketId, uint8 outcomeIdx, uint256 amount);
+    event PositionsMinted(address indexed pool, uint256 amount);
+    event SweepSkipped(bytes32 indexed marketId, string reason);
 
     // -------------------------------------------------------------------- errors
 
@@ -176,6 +211,29 @@ contract VaneAgent is SomniaEventHandler {
         emit ActivePoolSet(pool);
     }
 
+    /// @notice Set the order price and type used by the default strategy.
+    /// @param limitPrice_ Probability scaled to collateral decimals (0.95 -> 950000 at 6dp).
+    ///        Pass 0 to fall back to the built-in default.
+    /// @param orderType_ 0 LIMIT, 1 FILL_OR_KILL, 2 MARKET (IOC), 3 POST_ONLY.
+    function setStrategy(uint256 limitPrice_, uint8 orderType_) external onlyOwner {
+        limitPrice = limitPrice_;
+        orderType = orderType_;
+        emit StrategySet(limitPrice_, orderType_);
+    }
+
+    /// @notice Nominate the market the next scheduled wake should redeem.
+    function setPendingMarket(bytes32 marketId, address market) external onlyOperatorOrOwner {
+        pendingMarketId = marketId;
+        pendingMarket = market;
+        emit PendingMarketSet(marketId, market);
+    }
+
+    /// @notice Routing attribution for redemption. Both zero matches the SDK default.
+    function setRedeemRouting(uint32 operatorId_, bytes32 venueId_) external onlyOwner {
+        redeemOperatorId = operatorId_;
+        redeemVenueId = venueId_;
+    }
+
     /// @notice Set the venue's lot grid. Pass 1 to disable rounding.
     function setLotSize(uint256 lotSize_) external onlyOwner {
         if (lotSize_ == 0) revert ZeroAmount();
@@ -197,11 +255,20 @@ contract VaneAgent is SomniaEventHandler {
     /// @dev Invoked by the reactivity precompile when a subscribed market event lands.
     ///      It must never revert on a business condition: a revert rolls the whole wake
     ///      back and leaves no trace of why nothing happened.
-    function _onEvent(address emitter, bytes32[] calldata, bytes calldata) internal override {
+    function _onEvent(address emitter, bytes32[] calldata eventTopics, bytes calldata) internal override {
         unchecked {
             wakeCount++;
         }
         emit WokenByChain(emitter, block.number);
+
+        // Two kinds of wake arrive here, and topic0 tells them apart. A one-shot armed with
+        // scheduleAtTimestamp fires the precompile's own Schedule event, and that is the
+        // housekeeping pass: free escrow and claim anything that settled. Every other topic
+        // is real market activity, so it is a chance to trade.
+        if (eventTopics.length != 0 && eventTopics[0] == TOPIC_SCHEDULE) {
+            _housekeep();
+            return;
+        }
 
         // Trade the configured pool. If the emitter happens to BE an allowed pool, prefer
         // it, so a per-pool subscription acts on the pool that actually moved.
@@ -211,6 +278,20 @@ contract VaneAgent is SomniaEventHandler {
             return;
         }
         _tryTrade(target);
+    }
+
+    /// @notice The scheduled pass: get money back. Also callable by hand.
+    function housekeep() external {
+        _housekeep();
+    }
+
+    function _housekeep() private {
+        if (activePool != address(0) && openOrderIds.length != 0) {
+            this.reclaimExpired(activePool);
+        }
+        if (pendingMarket != address(0)) {
+            this.sweepSettled(pendingMarketId, pendingMarket);
+        }
     }
 
     /// @notice Manual trigger, for tests and for the console's trade-now button.
@@ -268,7 +349,7 @@ contract VaneAgent is SomniaEventHandler {
             price,
             quantity,
             uint64(block.timestamp + 300) * 1_000_000_000,
-            0, // LIMIT: fill what crosses, rest the remainder
+            orderType,
             0, // self-match: cancel the remainder of our own taker
             address(0),
             0,
@@ -278,6 +359,9 @@ contract VaneAgent is SomniaEventHandler {
                 tradeCount++;
             }
             lastTradeAt = block.timestamp;
+            // Remembered so escrow can be released later. An order that rests and then
+            // expires keeps its collateral until something cancels it.
+            if (orderId != 0) openOrderIds.push(orderId);
             emit Traded(pool, kind, price, quantity, orderId);
         } catch {
             emit TradeSkipped(pool, "pool rejected the order");
@@ -296,10 +380,119 @@ contract VaneAgent is SomniaEventHandler {
         returns (uint8 kind, uint256 price, uint256 quantity)
     {
         uint256 one = 10 ** collateral.decimals();
-        price = (one * 45) / 100; // 0.45 probability
-        // Quantity is in contracts, and each costs `price` collateral, so size / price.
+        // Default 0.95 so the order CROSSES and fills. A resting bid below the market never
+        // fills, which leaves no position to settle and nothing to redeem, and the escrow
+        // just sits locked until it is cancelled.
+        price = limitPrice == 0 ? (one * 95) / 100 : limitPrice;
+        // Quantity is in contracts, and each costs at most `price` collateral, so size / price.
         quantity = (size * one) / price;
         kind = 0; // BUY_YES
+    }
+
+    /// @notice Mint a complete set: collateral in, one YES and one NO out.
+    /// @dev No counterparty is needed, which is how a maker builds inventory to quote both
+    ///      sides. It is also the only way to hold a position on a market whose book is
+    ///      empty. At settlement one side pays 1 and the other 0, so a complete set is
+    ///      worth exactly what it cost.
+    function mintPositions(address pool, uint256 amount) external onlyOperatorOrOwner {
+        if (amount == 0) revert ZeroAmount();
+        if (!poolAllowed[pool]) {
+            emit TradeSkipped(pool, "pool not allowed");
+            return;
+        }
+        // Both halves to ourselves; the pool pulls collateral under the allowance that
+        // setPoolAllowed granted.
+        IBinaryPool(pool).mintSet(address(this), address(this), amount);
+        emit PositionsMinted(pool, amount);
+    }
+
+    // --------------------------------------------------------- getting money back
+
+    /// @notice Release escrow held by our expired orders.
+    /// @dev PERMISSIONLESS on purpose. If the operator disappears, anyone can still free
+    ///      the owner's collateral, and the pool returns it to the order's owner (us)
+    ///      rather than to whoever calls. Measured ~517k gas for six orders on a live pool.
+    function reclaimExpired(address pool) external {
+        uint256 n = openOrderIds.length;
+        if (n == 0) {
+            emit ReclaimSkipped(pool, "no recorded orders");
+            return;
+        }
+
+        uint128[] memory ids = openOrderIds;
+        // Cleared before the call so a pool that reverts cannot strand the list.
+        delete openOrderIds;
+
+        try IBinaryPool(pool).cancelExpiredOrders(ids) {
+            unchecked {
+                reclaimCount++;
+            }
+            emit Reclaimed(pool, n);
+        } catch {
+            emit ReclaimSkipped(pool, "pool rejected the cancel");
+        }
+    }
+
+    /// @notice Turn a settled position back into collateral.
+    /// @dev PERMISSIONLESS, for the same reason as reclaim: redemption must never depend on
+    ///      the operator still being alive. DreamDEX's own docs call this "the step people
+    ///      miss", because finalized markets drop out of the normal market listing.
+    /// @param marketId The market key. Redemption is keyed by market, never by pool, since
+    ///        pools are recycled onto the next window.
+    /// @param market The market contract for this window.
+    function sweepSettled(bytes32 marketId, address market) external {
+        IBinaryMarket m = IBinaryMarket(market);
+
+        bool voided = m.isVoided();
+        if (!voided && !m.isResolved()) {
+            emit SweepSkipped(marketId, "not settled yet");
+            return;
+        }
+
+        IOutcomeToken6909 token = IOutcomeToken6909(m.outcomeToken());
+        // The module pulls the winning position from us, so it has to be an operator on the
+        // ERC-6909 singleton first. One grant covers every id and every market.
+        if (!token.isOperator(address(this), MARKETS_MODULE)) {
+            token.setOperator(MARKETS_MODULE, true);
+        }
+
+        if (voided) {
+            // A voided market pays BOTH sides at 0.5, so claim both.
+            _redeemOne(marketId, token, 0, m.yesId());
+            _redeemOne(marketId, token, 1, m.noId());
+            return;
+        }
+
+        // Settlement v3 stores a payout vector. `winningOutcome()` was removed and reverts,
+        // so the winner is the argmax.
+        uint256[] memory payouts = m.payoutNumerators();
+        if (payouts.length == 0) {
+            emit SweepSkipped(marketId, "no payout vector");
+            return;
+        }
+        uint8 winner = 0;
+        for (uint256 i = 1; i < payouts.length; i++) {
+            if (payouts[i] > payouts[winner]) winner = uint8(i);
+        }
+        _redeemOne(marketId, token, winner, winner == 0 ? m.yesId() : m.noId());
+    }
+
+    function _redeemOne(bytes32 marketId, IOutcomeToken6909 token, uint8 outcomeIdx, uint256 tokenId) private {
+        uint256 amount = token.balanceOf(address(this), tokenId);
+        if (amount == 0) {
+            emit SweepSkipped(marketId, "no position to redeem");
+            return;
+        }
+        try IBinaryMarketsModule(MARKETS_MODULE).redeem(
+            redeemOperatorId, redeemVenueId, marketId, outcomeIdx, amount
+        ) {
+            unchecked {
+                redeemCount++;
+            }
+            emit Redeemed(marketId, outcomeIdx, amount);
+        } catch {
+            emit SweepSkipped(marketId, "module rejected the redeem");
+        }
     }
 
     // ------------------------------------------------------------------- rescue
