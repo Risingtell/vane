@@ -14,7 +14,7 @@
   "author": "Oluwasogo \"Israel\" Ajala (Rising Technology)",
   "license": "MIT",
   "devDependencies": {
-    "@nomicfoundation/hardhat-chai-matchers": "^2.1.0",
+    "@nomicfoundation/hardhat-chai-matchers": "^3.0.0",
     "@nomicfoundation/hardhat-ethers": "^3.1.0",
     "@nomicfoundation/hardhat-network-helpers": "^1.1.2",
     "@types/chai": "^4.3.20",
