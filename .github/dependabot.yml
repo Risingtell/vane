@@ -4,10 +4,19 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Major bumps here mean Hardhat 3 and chai 6, which are breaking changes for this
+    # toolchain. Security fixes are handled by pinning the vulnerable leaf packages in
+    # package.json overrides instead, which closes the advisories without the breakage.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/sdk"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
