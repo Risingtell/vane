@@ -11,15 +11,15 @@ Built for the Somnia x DreamDEX Event Contracts Hackathon.
 | **Live console** | https://vane-console.vercel.app |
 | **Demo video** | (added at submission) |
 | **Network** | Somnia Shannon testnet, chain 50312 |
-| **Agent** | [`VANE_AGENT`](https://shannon-explorer.somnia.network) |
-| **Factory** | [`VANE_FACTORY`](https://shannon-explorer.somnia.network) |
-| **Tests** | `VANE_TESTS` passing, contracts and TypeScript both clean |
+| **Agent** | [`0x7668a2effa84eB34d90b1611F867c706904687Df`](https://shannon-explorer.somnia.network) |
+| **Factory** | [`0xc17da7a28Ea556f6BfA7a774d9Da486C41574b43`](https://shannon-explorer.somnia.network) |
+| **Tests** | `55` passing, contracts and TypeScript both clean |
 | **SDK / CLI** | `sdk/`, published as `vane-agent` |
 
 Every number above can be re-derived by anyone, from the chain, in one command:
 
 ```bash
-npx vane status --agent VANE_AGENT
+npx vane status --agent 0x7668a2effa84eB34d90b1611F867c706904687Df
 ```
 
 ## Why this is not another trading bot
@@ -41,13 +41,13 @@ handler, then nothing of ours needs to be running for the agent to act:
 ```bash
 curl -s -X POST https://dream-rpc.somnia.network \
   -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"somnia_reactivityGetSubscriptions","params":["VANE_OPERATOR"]}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"somnia_reactivityGetSubscriptions","params":["0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053"]}'
 ```
 
 Then read what it has done, straight from contract state:
 
 ```bash
-npx vane status --agent VANE_AGENT
+npx vane status --agent 0x7668a2effa84eB34d90b1611F867c706904687Df
 ```
 
 `JUDGE-QUICKSTART.md` is the five-minute version, with the exact output to expect at each step.
@@ -127,7 +127,7 @@ To run an agent of your own on Shannon:
 cd sdk && npm link            # provides the `vane` command
 export PRIVATE_KEY=0x...      # a throwaway testnet key, never one holding real funds
 vane faucet                   # 10,000 test tUSDC
-vane create --factory VANE_FACTORY
+vane create --factory 0xc17da7a28Ea556f6BfA7a774d9Da486C41574b43
 vane fund   --agent 0x... --amount 100
 vane arm    --agent 0x... --topic 0x4ca9766196d8679d9b2e01457f67073d844b29646ce302169de44cd72e593d11
 vane status --agent 0x...

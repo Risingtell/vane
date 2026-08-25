@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// vane — drive an on-chain trading agent from the command line.
+// vane: drive an on-chain trading agent from the command line.
 //
 // Every command talks to Somnia and to the agent contract directly. There is no service in
 // the middle, which is the whole point of the project.
@@ -36,7 +36,7 @@ function need(value, name) {
 }
 
 const HELP = `
-vane — an on-chain trading agent for DreamDEX event contracts
+vane: an on-chain trading agent for DreamDEX event contracts
 
   vane markets                          windows open right now
   vane status   --agent 0x..            everything the agent has done

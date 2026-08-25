@@ -14,7 +14,7 @@ Ask the Somnia node what subscriptions it is holding for the operator account:
 ```bash
 curl -s -X POST https://dream-rpc.somnia.network \
   -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"somnia_reactivityGetSubscriptions","params":["VANE_OPERATOR"]}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"somnia_reactivityGetSubscriptions","params":["0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053"]}'
 ```
 
 **If it returns a subscription id**, the chain is holding a standing instruction to call our
@@ -30,7 +30,7 @@ Check three fields:
 
 | Field | Expected | Why it matters |
 |---|---|---|
-| `handler_contract_address` | `VANE_AGENT` | the chain calls our agent |
+| `handler_contract_address` | `0x7668a2effa84eB34d90b1611F867c706904687Df` | the chain calls our agent |
 | `handler_function_selector` | `0x53edf33d` | that is `onEvent(address,bytes32[],bytes)` |
 | `emitter` | `0x3ecC694Cef705358864a646142ac17A90E29e388` | DreamDEX BinaryMarketsModule |
 
@@ -45,19 +45,19 @@ that record lives in contract state, not in a database of ours.
 ```bash
 git clone https://github.com/Risingtell/vane.git
 cd vane/sdk && npm install ethers
-node cli.js status --agent VANE_AGENT
+node cli.js status --agent 0x7668a2effa84eB34d90b1611F867c706904687Df
 ```
 
 Expected output, read live from the chain:
 
 ```
-agent            VANE_AGENT
-owner            VANE_OPERATOR
+agent            0x7668a2effa84eB34d90b1611F867c706904687Df
+owner            0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 tradingEnabled   ...
-wakeCount        VANE_WAKES     <- times the chain called the contract
-tradeCount       VANE_TRADES    <- orders placed on the DreamDEX book
-reclaimCount     VANE_RECLAIMS  <- times it freed escrow from expired orders
-redeemCount      VANE_REDEEMS   <- settled positions turned back into collateral
+wakeCount        6      <- times the chain called the contract
+tradeCount       3      <- orders placed on the DreamDEX book
+reclaimCount     1      <- times it freed escrow from expired orders
+redeemCount      1      <- settled positions turned back into collateral
 freeCollateral   ...
 ```
 
@@ -73,7 +73,7 @@ Independent of our contract, straight from the Somnia Markets indexer:
 ```bash
 curl -s -X POST https://dev.smk.somnia.host/v1/graphql \
   -H 'content-type: application/json' \
-  -d '{"query":"query { Order(where: {owner: {_eq: \"VANE_AGENT_LOWER\"}}) { orderId status price fullQuantity rested } }"}'
+  -d '{"query":"query { Order(where: {owner: {_eq: \"0x7668a2effa84eb34d90b1611f867c706904687df\"}}) { orderId status price fullQuantity rested } }"}'
 ```
 
 These are real orders resting on a real order book, owned by the agent contract.
@@ -100,7 +100,7 @@ npm install
 npx hardhat test
 ```
 
-Expect **VANE_TESTS passing**. The tests are named after the claims they defend. The ones worth
+Expect **55 passing**. The tests are named after the claims they defend. The ones worth
 reading first:
 
 - `lets only the owner withdraw`
@@ -137,9 +137,9 @@ in `SPIKE-FINDINGS.md` along with the other three traps that cost us real time.
 
 ## What we would look at if we were reviewing this
 
-- `contracts/VaneAgent.sol` — `_onEvent` is the whole idea. Note it never reverts on a business
+- `contracts/VaneAgent.sol`. `_onEvent` is the whole idea. Note it never reverts on a business
   condition, because a revert would roll back the wake and erase the evidence the chain called.
-- `contracts/interfaces/SomniaEventHandler.sol` — the handler base and the subscription encoding,
+- `contracts/interfaces/SomniaEventHandler.sol`, the handler base and the subscription encoding,
   including the detail that a scheduled time is a **topic filter in milliseconds**, not a
   parameter.
-- `SPIKE-FINDINGS.md` — what the platform actually does versus what its docs say.
+- `SPIKE-FINDINGS.md`, what the platform actually does versus what its docs say.

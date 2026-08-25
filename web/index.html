@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Vane — a trading agent with no server</title>
+<title>Vane: a trading agent with no server</title>
 <meta name="description" content="A prediction-market trading agent that lives on-chain. The Somnia chain itself wakes it to trade DreamDEX event contracts. No bot, no server, no keeper." />
 <style>
   :root{
@@ -17,6 +17,12 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{-webkit-text-size-adjust:100%}
+  /* The page itself must never scroll sideways. Wide content scrolls inside its own box. */
+  html,body{max-width:100%;overflow-x:hidden}
+  /* Addresses, hashes and topic filters cannot wrap on their own and will otherwise push
+     the layout wider than a phone screen. */
+  .mono,code,pre,td,th,a,.v{overflow-wrap:anywhere}
+  img,video,canvas{max-width:100%;height:auto}
   body{background:var(--ink);color:var(--text);font-family:var(--sans);line-height:1.5;
        font-size:16px;-webkit-font-smoothing:antialiased}
   .wrap{max-width:var(--measure);margin:0 auto;padding:0 28px}
@@ -115,6 +121,12 @@
     .hero{padding:52px 0 44px}
     section{padding:42px 0}
   }
+  @media(max-width:430px){
+    .wrap{padding:0 14px}
+    body{font-size:15px}
+    .cell{padding:18px}
+    ol.steps li{padding-left:46px}
+  }
 </style>
 </head>
 <body>
@@ -168,13 +180,13 @@
       </div>
 
       <div class="grid g4">
-        <div class="cell"><div class="k">Subscription</div><div class="v" id="subId">—</div>
+        <div class="cell"><div class="k">Subscription</div><div class="v" id="subId">&middot;</div>
           <div class="note">Held in chain state</div></div>
-        <div class="cell"><div class="k">Times woken</div><div class="v" id="wakeCount">—</div>
+        <div class="cell"><div class="k">Times woken</div><div class="v" id="wakeCount">&middot;</div>
           <div class="note">By the chain, unprompted</div></div>
-        <div class="cell"><div class="k">Orders placed</div><div class="v" id="tradeCount">—</div>
+        <div class="cell"><div class="k">Orders placed</div><div class="v" id="tradeCount">&middot;</div>
           <div class="note">On the DreamDEX book</div></div>
-        <div class="cell"><div class="k">Gas per wake</div><div class="v" id="gasLimit">—</div>
+        <div class="cell"><div class="k">Gas per wake</div><div class="v" id="gasLimit">&middot;</div>
           <div class="note">Billed to the subscription owner</div></div>
       </div>
     </section>
@@ -193,19 +205,19 @@
       </p>
 
       <div class="grid g4">
-        <div class="cell"><div class="k">Free collateral</div><div class="v" id="balance">—</div>
+        <div class="cell"><div class="k">Free collateral</div><div class="v" id="balance">&middot;</div>
           <div class="note">tUSDC in the agent</div></div>
-        <div class="cell"><div class="k">Escrow reclaimed</div><div class="v" id="reclaimCount">—</div>
+        <div class="cell"><div class="k">Escrow reclaimed</div><div class="v" id="reclaimCount">&middot;</div>
           <div class="note">Freed from expired orders</div></div>
-        <div class="cell"><div class="k">Positions redeemed</div><div class="v" id="redeemCount">—</div>
+        <div class="cell"><div class="k">Positions redeemed</div><div class="v" id="redeemCount">&middot;</div>
           <div class="note">Settled, then claimed</div></div>
-        <div class="cell"><div class="k">Trading</div><div class="v" id="tradingState">—</div>
+        <div class="cell"><div class="k">Trading</div><div class="v" id="tradingState">&middot;</div>
           <div class="note">Owner can halt at any time</div></div>
       </div>
 
       <div class="grid g2">
-        <div class="cell"><div class="k">Agent contract</div><div class="v sm" id="agentAddr">—</div></div>
-        <div class="cell"><div class="k">Risk policy</div><div class="v sm" id="policy">—</div></div>
+        <div class="cell"><div class="k">Agent contract</div><div class="v sm" id="agentAddr">&middot;</div></div>
+        <div class="cell"><div class="k">Risk policy</div><div class="v sm" id="policy">&middot;</div></div>
       </div>
     </section>
   </div>
@@ -221,9 +233,9 @@
         Up and Down share one book, and a Down price is always 1 minus the Up price.
       </p>
       <div class="grid g3">
-        <div class="cell"><div class="k">Window</div><div class="v sm" id="mktQuestion">—</div></div>
-        <div class="cell"><div class="k">Settles in</div><div class="v" id="mktCountdown">—</div></div>
-        <div class="cell"><div class="k">Last price</div><div class="v" id="mktPrice">—</div>
+        <div class="cell"><div class="k">Window</div><div class="v sm" id="mktQuestion">&middot;</div></div>
+        <div class="cell"><div class="k">Settles in</div><div class="v" id="mktCountdown">&middot;</div></div>
+        <div class="cell"><div class="k">Last price</div><div class="v" id="mktPrice">&middot;</div>
           <div class="note">Probability of Up</div></div>
       </div>
     </section>
@@ -295,6 +307,7 @@
   </div>
 </div>
 
+<script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
 <script>
 // ---------------------------------------------------------------- configuration
@@ -357,12 +370,12 @@ async function loadProof() {
     const info = await provider.send("somnia_reactivityGetSubscriptionInfo", [id]);
     const s = Array.isArray(info) ? info[0] : info;
     $("subId").textContent = "#" + BigInt(id).toString();
-    $("gasLimit").textContent = s && s.gas_limit ? (BigInt(s.gas_limit) / 1000000n) + "M" : "—";
+    $("gasLimit").textContent = s && s.gas_limit ? (BigInt(s.gas_limit) / 1000000n) + "M" : "·";
     $("proofLine").textContent = "The chain is holding a live subscription for this agent.";
     $("proofDetail").textContent =
       "handler " + (s && s.handler_contract_address ? s.handler_contract_address : CFG.agent) +
       "  ·  selector " + (s && s.handler_function_selector ? s.handler_function_selector : "0x53edf33d") +
-      "  ·  emitter " + (s && s.emitter ? s.emitter : "—");
+      "  ·  emitter " + (s && s.emitter ? s.emitter : "·");
   } catch (e) {
     $("proofLine").textContent = "Could not reach the node.";
     $("proofDetail").textContent = String(e.message || e).slice(0, 160);
@@ -406,7 +419,7 @@ async function loadMarket() {
     const m = j.data && j.data.Market && j.data.Market[0];
     if (!m) { $("mktQuestion").textContent = "no window open"; return; }
     $("mktQuestion").textContent = m.question;
-    $("mktPrice").textContent = m.lastPrice ? (Number(m.lastPrice) / 1e6).toFixed(2) : "—";
+    $("mktPrice").textContent = m.lastPrice ? (Number(m.lastPrice) / 1e6).toFixed(2) : "·";
     startCountdown(Number(m.expiry));
   } catch (e) {
     $("mktQuestion").textContent = "indexer unreachable";
