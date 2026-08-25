@@ -11,8 +11,8 @@ Built for the Somnia x DreamDEX Event Contracts Hackathon.
 | **Live console** | https://vane-console.vercel.app |
 | **Demo video** | (added at submission) |
 | **Network** | Somnia Shannon testnet, chain 50312 |
-| **Agent** | [`0x7668a2effa84eB34d90b1611F867c706904687Df`](https://shannon-explorer.somnia.network) |
-| **Factory** | [`0xc17da7a28Ea556f6BfA7a774d9Da486C41574b43`](https://shannon-explorer.somnia.network) |
+| **Agent** | [`0x7668a2effa84eB34d90b1611F867c706904687Df`](https://shannon-explorer.somnia.network/address/0x7668a2effa84eB34d90b1611F867c706904687Df) |
+| **Factory** | [`0xc17da7a28Ea556f6BfA7a774d9Da486C41574b43`](https://shannon-explorer.somnia.network/address/0xc17da7a28Ea556f6BfA7a774d9Da486C41574b43) |
 | **Tests** | `55` passing, contracts and TypeScript both clean |
 | **SDK / CLI** | `sdk/`, published as `vane-agent` |
 
