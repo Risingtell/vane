@@ -132,6 +132,19 @@ export PRIVATE_KEY=0x...      # a throwaway testnet key, never one holding real 
 vane faucet                   # 10,000 test tUSDC
 vane create --factory 0xc17da7a28Ea556f6BfA7a774d9Da486C41574b43
 vane fund   --agent 0x... --amount 100
+```
+
+Then point it at the window that is open right now, because a fresh agent has no active pool and
+a wake with none set stands down with `no active pool set`:
+
+```bash
+cd ..                         # back to the repo root
+AGENT_ADDR=0x... npx hardhat run scripts/point-live.ts --network shannon
+```
+
+Now hand it to the chain:
+
+```bash
 vane arm    --agent 0x... --topic 0x4ca9766196d8679d9b2e01457f67073d844b29646ce302169de44cd72e593d11
 vane status --agent 0x...
 vane disarm                   # stops it, and stops spending STT
@@ -172,6 +185,10 @@ an ESM SDK with a CLI. Contract interfaces were derived from the shipped
   console will often show no live subscription while still showing everything the agent did while
   it was armed. Keeping one armed indefinitely is a funding problem, not a code one.
 - **Positions are valued at book cost.** There is no mark-to-market of an open position.
+- **It does not roll onto the next window by itself.** The subscription's emitter is the markets
+  module rather than any one pool, so the handler acts on the pool the owner set. When a window
+  closes, someone runs `scripts/point-live.ts` to move it forward. Decoding the new pool out of
+  the rollover event would remove that step, and it is the first thing worth building next.
 
 ## Notes for other builders
 
