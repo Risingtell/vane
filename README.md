@@ -164,18 +164,24 @@ an ESM SDK with a CLI. Contract interfaces were derived from the shipped
   this design cannot run on mainnet today.
 - **Custodial by necessity, not by choice.** See the custody section. The mitigations are real
   and tested, but the collateral does sit in a contract.
-- **Arming costs STT continuously.** Around 0.00093 STT per wake. The subscription is switched
-  off between sessions, so the console will often show no live subscription while still showing
-  everything the agent did while armed.
+- **Arming costs STT continuously, and that is the real limit on this design.** A wake costs
+  0.0011 to 0.0018 STT, and DreamDEX delivers about 2.7 of them a minute, so an armed agent burns
+  roughly 4.2 STT a day. With a chain-enforced 32 STT floor under the subscription owner, a
+  46 STT balance buys about three and a half days of continuous arming, and a Shannon faucet
+  grant is about 1 STT. So the subscription is armed in sessions rather than left on, and the
+  console will often show no live subscription while still showing everything the agent did while
+  it was armed. Keeping one armed indefinitely is a funding problem, not a code one.
 - **Positions are valued at book cost.** There is no mark-to-market of an open position.
 
 ## Notes for other builders
 
-`SPIKE-FINDINGS.md` documents everything learned against live Shannon, including four things that
+`SPIKE-FINDINGS.md` documents everything learned against live Shannon, including six things that
 cost real time and are not in the docs: a chain-enforced 32 STT minimum on a subscription owner
 that reverts with no reason data, `unsubscribe` authorising on `tx.origin` while `subscribe`
 records `msg.sender`, a venue lot grid that rejects off-grid quantities, and a subscription gas
-limit that silently turns a trade into an ordinary rejected order.
+limit that silently turns a trade into an ordinary rejected order, an `eth_getLogs` range capped
+at 1000 blocks on a chain that makes ten blocks a second, and what an armed subscription actually
+costs per day.
 
 ## Licence
 

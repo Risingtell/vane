@@ -247,7 +247,7 @@
     <section>
       <div class="eyebrow">On-chain activity</div>
       <h2>Everything it has done</h2>
-      <p class="sub">Read straight from the agent's own events on Shannon.</p>
+      <p class="sub">Read straight from the chain: the agent's own events, and the orders it left on the DreamDEX book.</p>
       <div class="tablewrap">
         <table>
           <thead><tr><th>Event</th><th>Detail</th><th>Block</th></tr></thead>
@@ -410,16 +410,19 @@ async function loadMarket() {
   const now = Math.floor(Date.now() / 1000);
   const q = `query { Market(where: {marketType: {_eq: BINARY}, clobStatus: {_eq: Trading},
     expiry: {_gt: "${now}"}, question: {_ilike: "%opening price%"}},
-    order_by: {expiry: asc}, limit: 1) { question expiry lastPrice } }`;
+    order_by: {expiry: asc}, limit: 4) { question expiry lastPrice } }`;
   try {
     const r = await fetch(CFG.indexer, {
       method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({query: q}),
     });
     const j = await r.json();
-    const m = j.data && j.data.Market && j.data.Market[0];
-    if (!m) { $("mktQuestion").textContent = "no window open"; return; }
+    const all = (j.data && j.data.Market) || [];
+    if (!all.length) { $("mktQuestion").textContent = "no window open"; return; }
+    // A window that has not traded yet reports a null lastPrice, and a bare dash under
+    // "probability of Up" reads as broken. Prefer the soonest window that has a price.
+    const m = all.find((x) => x.lastPrice) || all[0];
     $("mktQuestion").textContent = m.question;
-    $("mktPrice").textContent = m.lastPrice ? (Number(m.lastPrice) / 1e6).toFixed(2) : "·";
+    $("mktPrice").textContent = m.lastPrice ? (Number(m.lastPrice) / 1e6).toFixed(2) : "no trades yet";
     startCountdown(Number(m.expiry));
   } catch (e) {
     $("mktQuestion").textContent = "indexer unreachable";
@@ -444,9 +447,15 @@ const TAGS = {
   Traded: "trade", Reclaimed: "money", Redeemed: "money", PositionsMinted: "money",
   Deposited: "money", Withdrawn: "money", WokenByChain: "wake", TradeSkipped: "skip",
 };
+// A contract count, shown with enough precision that a one-lot dust order does not
+// render as "0.00" and read like a bug.
+const qty = (v) => {
+  const n = Number(v) / 1e6;
+  return n >= 1 ? n.toFixed(2) : n.toPrecision(2).replace(/0+$/, "").replace(/\.$/, "");
+};
 function describe(name, args) {
   switch (name) {
-    case "Traded": return "bought " + (Number(args.quantity) / 1e6).toFixed(2) +
+    case "Traded": return "bought " + qty(args.quantity) +
       " at " + (Number(args.price) / 1e6).toFixed(2);
     case "Reclaimed": return "freed escrow from " + args.orderCount.toString() + " expired order(s)";
     case "Redeemed": return "claimed " + usd(args.amount) + " tUSDC from a settled market";
@@ -458,13 +467,38 @@ function describe(name, args) {
     default: return "";
   }
 }
+// Wakes and stand-downs repeat every few seconds while the agent is halted on its reserve
+// floor, so they are collapsed. The trades, reclaims and redemptions are what matter.
+const ROUTINE = { WokenByChain: 1, TradeSkipped: 1 };
+
+const feedRow = (tag, cls, detail, right, href) =>
+  '<tr><td><span class="tag ' + cls + '">' + tag + '</span></td>' +
+  '<td style="white-space:normal;color:var(--muted)">' + detail + '</td>' +
+  '<td>' + (href ? '<a href="' + href + '" target="_blank" rel="noopener">' + right + '</a>' : right) + '</td></tr>';
+
+// Logs only reach back a few minutes here, but the DreamDEX indexer keeps the agent's
+// orders permanently. So the panel always has something real to show.
+async function ordersFromIndexer() {
+  const q = `query { Order(where: {owner: {_eq: "${CFG.agent.toLowerCase()}"}},
+    order_by: {orderId: desc}, limit: 12) { orderId status price fullQuantity } }`;
+  const r = await fetch(CFG.indexer, {
+    method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({query: q}),
+  });
+  const j = await r.json();
+  return (j.data && j.data.Order) || [];
+}
+
+let feedBusy = false;
 async function loadFeed() {
+  if (feedBusy) return;
+  feedBusy = true;
   const body = $("feed");
   try {
     const head = await provider.getBlockNumber();
-    let rows = [];
-    // The node caps getLogs at 1000 blocks per call, so walk back in windows.
-    for (let i = 0; i < 12 && rows.length < 14; i++) {
+    const raw = [];
+    // The node caps getLogs at 1000 blocks per call and Somnia makes about ten blocks a
+    // second, so walk back in windows and stop as soon as there is something notable.
+    for (let i = 0; i < 10; i++) {
       const to = head - i * 1000, from = to - 999;
       let logs = [];
       try { logs = await provider.getLogs({address: CFG.agent, fromBlock: from, toBlock: to}); }
@@ -473,22 +507,58 @@ async function loadFeed() {
         try {
           const d = agent.interface.parseLog(l);
           if (!d) continue;
-          rows.push({name: d.name, text: describe(d.name, d.args), blk: l.blockNumber, tx: l.transactionHash});
+          raw.push({name: d.name, text: describe(d.name, d.args), blk: l.blockNumber, tx: l.transactionHash});
         } catch (e) {}
       }
+      if (raw.filter((r) => !ROUTINE[r.name]).length >= 4) break;
     }
-    if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="3" style="color:var(--dim)">No events in the recent window. ' +
-        'Somnia produces about ten blocks a second, so this only reaches back a few minutes.</td></tr>';
-      return;
+
+    // Keep every notable event, but let at most three routine ones through per run and
+    // summarise the rest, so a halted agent does not bury its own history.
+    const rows = [];
+    let run = 0, hidden = 0, hiddenBlk = null;
+    const flush = () => {
+      if (hidden > 0) rows.push(feedRow("×" + hidden, "wake",
+        "more wake and stand-down events in the same window", hiddenBlk,
+        CFG.explorer + "/address/" + CFG.agent));
+      run = 0; hidden = 0; hiddenBlk = null;
+    };
+    for (const r of raw) {
+      if (ROUTINE[r.name]) {
+        if (run < 3) { rows.push(feedRow(r.name, TAGS[r.name] || "", r.text, r.blk, CFG.explorer + "/tx/" + r.tx)); run++; }
+        else { hidden++; hiddenBlk = r.blk; }
+      } else {
+        flush();
+        rows.push(feedRow(r.name, TAGS[r.name] || "", r.text, r.blk, CFG.explorer + "/tx/" + r.tx));
+      }
     }
-    body.innerHTML = rows.slice(0, 14).map((r) =>
-      '<tr><td><span class="tag ' + (TAGS[r.name] || "") + '">' + r.name + '</span></td>' +
-      '<td style="white-space:normal;color:var(--muted)">' + r.text + '</td>' +
-      '<td><a href="' + CFG.explorer + '/tx/' + r.tx + '" target="_blank" rel="noopener">' + r.blk + '</a></td></tr>'
-    ).join("");
+    flush();
+
+    // Logs reach back under two minutes here, so the trades scroll out of view long
+    // before the wakes do. Whenever nothing notable is left in the tail, show the order
+    // history the DreamDEX indexer keeps permanently, so this panel is never thin.
+    const notable = raw.filter((r) => !ROUTINE[r.name]).length;
+    let html = rows.slice(0, 16).join("");
+    if (!notable) {
+      const orders = await ordersFromIndexer();
+      if (orders.length) {
+        html += '<tr><td colspan="3" style="color:var(--dim);white-space:normal">' +
+          (rows.length ? 'Older events have already fallen out of reach. ' : '') +
+          'Somnia makes about ten blocks a second, so contract logs stay readable for only a ' +
+          "couple of minutes. These are the agent's orders on the DreamDEX book, kept " +
+          'permanently by the indexer.</td></tr>' +
+          orders.map((o) => feedRow("Order", "trade",
+            "#" + o.orderId + " · " + qty(o.fullQuantity) +
+            " at " + (Number(o.price) / 1e6).toFixed(2), o.status,
+            CFG.explorer + "/address/" + CFG.agent)).join("");
+      }
+    }
+    body.innerHTML = html ||
+      '<tr><td colspan="3" style="color:var(--dim);white-space:normal">Nothing yet.</td></tr>';
   } catch (e) {
     body.innerHTML = '<tr><td colspan="3" style="color:var(--down)">Could not read the chain.</td></tr>';
+  } finally {
+    feedBusy = false;
   }
 }
 
@@ -529,7 +599,7 @@ $("factoryLink").href = CFG.explorer + "/address/" + CFG.factory;
 function refresh() { loadProof(); loadAgent(); loadMarket(); loadFeed(); }
 refresh();
 setInterval(() => { loadProof(); loadAgent(); }, 15000);
-setInterval(loadFeed, 30000);
+setInterval(loadFeed, 60000);
 setInterval(loadMarket, 60000);
 </script>
 </body>

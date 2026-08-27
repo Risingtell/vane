@@ -249,3 +249,42 @@ the caller.
 The redemption is unambiguous on-chain (contract state and balance), but no `RedemptionRecord` row
 appeared in the indexer for it. That window came from the `Pricefeed test` series rather than the
 production one. For anything a judge will check, use a production-series market.
+
+---
+
+# Day 5: what it costs to leave an agent armed
+
+Re-measured on 27 Aug against the live agent, because the answer decides whether an agent of
+this design can simply be left running.
+
+| | measured |
+|---|---|
+| Wakes delivered | ~2.7 per minute, set by DreamDEX event traffic, not by us |
+| A wake that places an order | ~0.0018 STT |
+| A wake that stands down on policy | ~0.0011 STT |
+| Burn at the observed wake rate | **~4.2 STT per day** |
+
+Shannon's base fee sits flat at 6 gwei and the wake is charged at base plus the subscription's
+priority fee, not at its `maxFeePerGas`. So raising or lowering the fee cap in the subscription
+does not change the bill, and there is no cheap knob to turn.
+
+Put together with the 32 STT floor, that is the real operational constraint on this design: a
+subscription owner holding 46 STT has about **three and a half days** of continuous arming before
+it falls under the floor, and a Shannon faucet grant is ~1 STT. An always-on agent needs a funded
+operator, which is a sponsor decision, not a code one.
+
+## `eth_getLogs` is capped at 1000 blocks, and Somnia makes ten blocks a second
+
+The node rejects any `eth_getLogs` range wider than 1000 blocks with `block range exceeds 1000`.
+At roughly ten blocks per second that is a hundred-second window per call, so a naive log tail
+reaches back under two minutes and a UI built on one shows nothing a few minutes after the agent
+goes quiet. Anything that has to survive being read later belongs in contract state or in the
+indexer, not in a log scan. The console walks ten windows and then falls back to the indexer's
+permanent order history.
+
+## `cancelExpiredOrders` returns the escrow exactly, and only for expired orders
+
+Re-proven on 27 Aug on a second, independent run: nine resting orders, six still tracked, one
+call, `250.00005 -> 300.0 tUSDC`. Orders past `expireTimestampNs` still report `status: Open` to
+the indexer until something cancels them, which is why the balance and not the status is the
+thing to measure.
