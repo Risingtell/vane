@@ -218,6 +218,13 @@ an ESM SDK with a CLI. Contract interfaces were derived from the shipped
 
 ## Notes for other builders
 
+`FEEDBACK-REPORT.md` is the optional SDK and documentation feedback the submission guidelines
+ask for: six things that cost real building time on live Shannon, each with the measurement and a
+suggested fix, plus the one thing about the platform that is genuinely good.
+
+### The findings themselves
+
+
 `SPIKE-FINDINGS.md` documents everything learned against live Shannon, including six things that
 cost real time and are not in the docs: a chain-enforced 32 STT minimum on a subscription owner
 that reverts with no reason data, `unsubscribe` authorising on `tx.origin` while `subscribe`
