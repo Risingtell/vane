@@ -96,6 +96,7 @@
   .tag.wake{color:var(--muted)}
   .tag.money{color:var(--up);border-color:rgba(46,213,115,.45)}
   .tag.skip{color:var(--dim)}
+  .tag.roll{color:var(--signal);border-color:rgba(255,176,32,.45);font-weight:600}
 
   ol.steps{margin-top:26px;list-style:none;counter-reset:s}
   ol.steps li{counter-increment:s;padding:18px 0 18px 56px;border-bottom:1px solid var(--line);position:relative}
@@ -186,8 +187,8 @@
           <div class="note">By the chain, unprompted</div></div>
         <div class="cell"><div class="k">Orders placed</div><div class="v" id="tradeCount">&middot;</div>
           <div class="note">On the DreamDEX book</div></div>
-        <div class="cell"><div class="k">Gas per wake</div><div class="v" id="gasLimit">&middot;</div>
-          <div class="note">Billed to the subscription owner</div></div>
+        <div class="cell"><div class="k">Windows it moved onto</div><div class="v" id="rollCount">&middot;</div>
+          <div class="note">Chose them itself, from the event</div></div>
       </div>
     </section>
   </div>
@@ -311,6 +312,11 @@
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
 <script>
 // ---------------------------------------------------------------- configuration
+// The two DreamDEX topics the agent is woken on. The second is what lets it move itself
+// onto the next window instead of waiting to be pointed at one.
+const TOPIC_MARKET = "0x4ca9766196d8679d9b2e01457f67073d844b29646ce302169de44cd72e593d11";
+const TOPIC_MARKET_CREATED = "0xb5ec75cdb7dbcd28a5f50d152d8833334525a902ef5332ebc19bcf5c0011f8cd";
+
 const CFG = {
   rpc: "https://dream-rpc.somnia.network",
   indexer: "https://dev.smk.somnia.host/v1/graphql",
@@ -327,10 +333,14 @@ const AGENT_ABI = [
   "function tradeCount() view returns (uint256)",
   "function reclaimCount() view returns (uint256)",
   "function redeemCount() view returns (uint256)",
+  "function rollCount() view returns (uint256)",
   "function tradingEnabled() view returns (bool)",
   "function maxPerWindow() view returns (uint256)",
   "function reserve() view returns (uint256)",
   "function activePool() view returns (address)",
+  "function activePoolExpiry() view returns (uint64)",
+  "event RolledForward(address indexed fromPool, address indexed toPool, uint64 expiry)",
+  "event RollSkipped(address indexed pool, string reason)",
   "event WokenByChain(address emitter, uint256 blockNumber)",
   "event Traded(address indexed pool, uint8 kind, uint256 price, uint256 quantity, uint128 orderId)",
   "event TradeSkipped(address indexed pool, string reason)",
@@ -366,16 +376,31 @@ async function loadProof() {
       $("subId").textContent = "none";
       return;
     }
-    const id = ids[0];
-    const info = await provider.send("somnia_reactivityGetSubscriptionInfo", [id]);
-    const s = Array.isArray(info) ? info[0] : info;
-    $("subId").textContent = "#" + BigInt(id).toString();
-    $("gasLimit").textContent = s && s.gas_limit ? (BigInt(s.gas_limit) / 1000000n) + "M" : "·";
-    $("proofLine").textContent = "The chain is holding a live subscription for this agent.";
+    // Two standing instructions, because the agent asks the chain for two different
+    // things: tell me when this market moves, and tell me when a new one opens.
+    const infos = await Promise.all(ids.map(async (id) => {
+      const info = await provider.send("somnia_reactivityGetSubscriptionInfo", [id]);
+      return { id, s: Array.isArray(info) ? info[0] : info };
+    }));
+    const label = (s) => {
+      // The node returns this as `topics`, not `event_topics`. Checked against a live
+      // somnia_reactivityGetSubscriptionInfo response, not guessed from the field name
+      // used when subscribing.
+      const t0 = s && s.topics && s.topics[0] ? String(s.topics[0]).toLowerCase() : "";
+      if (t0 === TOPIC_MARKET_CREATED) return "new windows";
+      if (t0 === TOPIC_MARKET) return "market activity";
+      return "market";
+    };
+    $("subId").textContent = infos.map((i) => "#" + BigInt(i.id).toString()).join(" · ");
+    $("proofLine").textContent = ids.length > 1
+      ? "The chain is holding " + ids.length + " live subscriptions for this agent."
+      : "The chain is holding a live subscription for this agent.";
+    const first = infos[0].s;
     $("proofDetail").textContent =
-      "handler " + (s && s.handler_contract_address ? s.handler_contract_address : CFG.agent) +
-      "  ·  selector " + (s && s.handler_function_selector ? s.handler_function_selector : "0x53edf33d") +
-      "  ·  emitter " + (s && s.emitter ? s.emitter : "·");
+      infos.map((i) => "#" + BigInt(i.id).toString() + " on " + label(i.s)).join("  ·  ") +
+      "  ·  handler " + (first && first.handler_contract_address ? first.handler_contract_address : CFG.agent) +
+      "  ·  selector " + (first && first.handler_function_selector ? first.handler_function_selector : "0x53edf33d") +
+      "  ·  " + (first && first.gas_limit ? (BigInt(first.gas_limit) / 1000000n) + "M gas per wake" : "");
   } catch (e) {
     $("proofLine").textContent = "Could not reach the node.";
     $("proofDetail").textContent = String(e.message || e).slice(0, 160);
@@ -385,12 +410,14 @@ async function loadProof() {
 // -------------------------------------------------------------------- agent state
 async function loadAgent() {
   try {
-    const [wake, trades, reclaims, redeems, trading, maxW, reserve, bal] = await Promise.all([
+    const [wake, trades, reclaims, redeems, rolls, trading, maxW, reserve, bal] = await Promise.all([
       agent.wakeCount(), agent.tradeCount(), agent.reclaimCount(), agent.redeemCount(),
-      agent.tradingEnabled(), agent.maxPerWindow(), agent.reserve(), tusdc.balanceOf(CFG.agent),
+      agent.rollCount(), agent.tradingEnabled(), agent.maxPerWindow(), agent.reserve(),
+      tusdc.balanceOf(CFG.agent),
     ]);
     $("wakeCount").textContent = wake.toString();
     $("tradeCount").textContent = trades.toString();
+    $("rollCount").textContent = rolls.toString();
     $("reclaimCount").textContent = reclaims.toString();
     $("redeemCount").textContent = redeems.toString();
     $("balance").textContent = usd(bal);
@@ -446,6 +473,7 @@ function startCountdown(expiry) {
 const TAGS = {
   Traded: "trade", Reclaimed: "money", Redeemed: "money", PositionsMinted: "money",
   Deposited: "money", Withdrawn: "money", WokenByChain: "wake", TradeSkipped: "skip",
+  RolledForward: "roll", RollSkipped: "skip",
 };
 // A contract count, shown with enough precision that a one-lot dust order does not
 // render as "0.00" and read like a bug.
@@ -464,12 +492,18 @@ function describe(name, args) {
     case "Withdrawn": return "withdrawal of " + usd(args.amount) + " tUSDC";
     case "WokenByChain": return "the chain called the agent";
     case "TradeSkipped": return "stood down: " + args.reason;
+    case "RolledForward": {
+      const mins = Math.max(0, Math.round((Number(args.expiry) - Date.now() / 1000) / 60));
+      return "moved itself onto a new window, " + mins + " min left on it";
+    }
+    case "RollSkipped": return "looked at a new window and passed: " + args.reason;
     default: return "";
   }
 }
 // Wakes and stand-downs repeat every few seconds while the agent is halted on its reserve
-// floor, so they are collapsed. The trades, reclaims and redemptions are what matter.
-const ROUTINE = { WokenByChain: 1, TradeSkipped: 1 };
+// floor, so they are collapsed. RollSkipped joins them: the venue opens far more windows
+// than the agent wants, so passing on one is the ordinary case, and taking one is not.
+const ROUTINE = { WokenByChain: 1, TradeSkipped: 1, RollSkipped: 1 };
 
 const feedRow = (tag, cls, detail, right, href) =>
   '<tr><td><span class="tag ' + cls + '">' + tag + '</span></td>' +

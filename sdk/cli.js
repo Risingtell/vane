@@ -8,6 +8,7 @@ import { Wallet } from "ethers";
 import {
   SHANNON, provider, status, subscriptions, subscriptionInfo, arm, disarm,
   reclaim, sweep, liveMarkets, createAgent, fund, faucet, MIN_OWNER_STT, close,
+  TOPIC_MARKET, TOPIC_MARKET_CREATED,
 } from "./index.js";
 
 const args = process.argv.slice(2);
@@ -46,7 +47,8 @@ vane: an on-chain trading agent for DreamDEX event contracts
   vane create   --factory 0x..          deploy your own agent
   vane fund     --agent 0x.. --amount N move collateral into it
 
-  vane arm      --agent 0x.. --topic 0x..   hand it to the chain
+  vane arm      --agent 0x..                hand it to the chain (trade + roll forward)
+  vane arm      --agent 0x.. --topic 0x..   one topic only
   vane disarm                               take it back, and stop spending STT
 
   vane reclaim  --agent 0x.. --pool 0x..                    free escrow from expired orders
@@ -105,11 +107,22 @@ async function main() {
       break;
     }
     case "arm": {
-      const ids = await arm(signer(), need(flag("agent"), "agent"), {
-        topic0: need(flag("topic"), "topic"),
-        gasLimit: BigInt(flag("gas", "8000000")),
-      });
-      console.log("armed. the chain now holds:", ids.join(", "));
+      const agent = need(flag("agent"), "agent");
+      const gasLimit = BigInt(flag("gas", "8000000"));
+      const s = signer();
+      // Two standing instructions, because the agent needs two different things from the
+      // chain: tell me when this market moves, and tell me when a new one opens. With only
+      // the first, it trades whatever window it was last pointed at, by hand, and keeps
+      // trading it long after that book has closed.
+      const topics = flag("topic")
+        ? [["market", flag("topic")]]
+        : [["market", TOPIC_MARKET], ["new windows", TOPIC_MARKET_CREATED]];
+      let ids = [];
+      for (const [label, topic0] of topics) {
+        ids = await arm(s, agent, { topic0, gasLimit });
+        console.log("armed on", label + ":", topic0);
+      }
+      console.log("the chain now holds:", ids.join(", "));
       break;
     }
     case "disarm": {

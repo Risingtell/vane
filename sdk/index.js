@@ -24,6 +24,32 @@ export const ON_EVENT_SELECTOR = "0x53edf33d";
 export const TOPIC_SCHEDULE = "0x67aa3d752967d87d8944b9c7adf73172518777fa4703f336edee81f0736d8987";
 
 /**
+ * topic0 of a DreamDEX market wake. Emitted by BinaryMarketsModule as windows trade.
+ * This is the one the agent trades on.
+ */
+export const TOPIC_MARKET = "0x4ca9766196d8679d9b2e01457f67073d844b29646ce302169de44cd72e593d11";
+
+/**
+ * topic0 of MarketCreated, emitted when DreamDEX opens a new window. This is the one that
+ * lets the agent move itself onto the next market, so nothing has to point it by hand.
+ *
+ * Recovered by hashing the event signatures in @somnia-chain/markets-sdk against live
+ * module logs: the module's implementation is unverified on the explorer and the signature
+ * is in no public topic database.
+ */
+export const TOPIC_MARKET_CREATED = "0xb5ec75cdb7dbcd28a5f50d152d8833334525a902ef5332ebc19bcf5c0011f8cd";
+
+/**
+ * The DreamDEX venue on Shannon.
+ *
+ * ⚠ This is the ONLY field that separates real DreamDEX windows from the "Pricefeed test"
+ * markets the same module creates, in the same bursts, in the same transactions. Both are
+ * marketType BINARY with the same tUSDC collateral. DreamDEX is operatorId 2, the
+ * throwaway pricefeed markets are operatorId 4.
+ */
+export const DREAMDEX_VENUE_ID = "0x679795a0195a1b76cdebb7c51d74e058aee92919b8c3389af86ef24535e8a28c";
+
+/**
  * The chain enforces a minimum balance on a subscription owner, and rejects with EMPTY
  * revert data below it, which is close to undiagnosable. Measured on Shannon: 31 fails,
  * 32 passes.
@@ -43,6 +69,10 @@ export const AGENT_ABI = [
   "function collateral() view returns (address)",
   "function tradingEnabled() view returns (bool)",
   "function activePool() view returns (address)",
+  "function activePoolExpiry() view returns (uint64)",
+  "function rollVenueId() view returns (bytes32)",
+  "function minWindowSeconds() view returns (uint64)",
+  "function orderPool() view returns (address)",
   "function maxPerWindow() view returns (uint256)",
   "function reserve() view returns (uint256)",
   "function lotSize() view returns (uint256)",
@@ -50,6 +80,7 @@ export const AGENT_ABI = [
   "function tradeCount() view returns (uint256)",
   "function reclaimCount() view returns (uint256)",
   "function redeemCount() view returns (uint256)",
+  "function rollCount() view returns (uint256)",
   "function openOrderCount() view returns (uint256)",
   "function deposit(uint256 amount)",
   "function withdraw(uint256 amount)",
@@ -60,6 +91,7 @@ export const AGENT_ABI = [
   "function setStrategy(uint256 limitPrice, uint8 orderType)",
   "function setPoolAllowed(address pool, bool allowed)",
   "function setActivePool(address pool)",
+  "function setRollForward(bytes32 venueId, uint64 minWindowSeconds)",
   "function setPendingMarket(bytes32 marketId, address market)",
   "function mintPositions(address pool, uint256 amount)",
   "function poke(address pool)",
@@ -133,18 +165,29 @@ export async function status(agentAddress, rpc = SHANNON.rpc) {
   const p = provider(rpc);
   const a = new Contract(agentAddress, AGENT_ABI, p);
   const t = new Contract(SHANNON.collateral, ERC20_ABI, p);
-  const [owner, operator, trading, pool, maxW, reserve, wakes, trades, reclaims, redeems, open, bal] =
+  const [owner, operator, trading, pool, expiry, venue, minWindow, orderPool,
+    maxW, reserve, wakes, trades, reclaims, redeems, rolls, open, bal] =
     await Promise.all([
-      a.owner(), a.operator(), a.tradingEnabled(), a.activePool(), a.maxPerWindow(), a.reserve(),
-      a.wakeCount(), a.tradeCount(), a.reclaimCount(), a.redeemCount(), a.openOrderCount(),
-      t.balanceOf(agentAddress),
+      a.owner(), a.operator(), a.tradingEnabled(), a.activePool(), a.activePoolExpiry(),
+      a.rollVenueId(), a.minWindowSeconds(), a.orderPool(), a.maxPerWindow(), a.reserve(),
+      a.wakeCount(), a.tradeCount(), a.reclaimCount(), a.redeemCount(), a.rollCount(),
+      a.openOrderCount(), t.balanceOf(agentAddress),
     ]);
+  const secondsLeft = expiry === 0n ? null : Number(expiry) - Math.floor(Date.now() / 1000);
   return {
     agent: agentAddress, owner, operator, tradingEnabled: trading, activePool: pool,
+    // Set only when the agent moved itself here, since that is the path that learns it.
+    activePoolExpiry: expiry === 0n ? null : Number(expiry),
+    windowSecondsLeft: secondsLeft,
+    rollsForward: venue !== ZeroHash,
+    rollVenueId: venue, minWindowSeconds: Number(minWindow),
+    // The book the tracked orders are resting in, which is not always the active one.
+    orderPool,
     maxPerWindow: formatUnits(maxW, 6), reserve: formatUnits(reserve, 6),
     freeCollateral: formatUnits(bal, 6),
     wakeCount: wakes.toString(), tradeCount: trades.toString(),
     reclaimCount: reclaims.toString(), redeemCount: redeems.toString(),
+    rollCount: rolls.toString(),
     trackedOrders: open.toString(),
   };
 }

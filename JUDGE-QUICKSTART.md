@@ -35,7 +35,7 @@ Check three fields:
 
 | Field | Expected | Why it matters |
 |---|---|---|
-| `handler_contract_address` | `0x7668a2effa84eB34d90b1611F867c706904687Df` | the chain calls our agent |
+| `handler_contract_address` | `0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B` | the chain calls our agent |
 | `handler_function_selector` | `0x53edf33d` | that is `onEvent(address,bytes32[],bytes)` |
 | `emitter` | `0x3ecC694Cef705358864a646142ac17A90E29e388` | DreamDEX BinaryMarketsModule |
 
@@ -52,13 +52,13 @@ database of ours.
 ```bash
 git clone https://github.com/Risingtell/vane.git
 cd vane/sdk && npm install ethers
-node cli.js status --agent 0x7668a2effa84eB34d90b1611F867c706904687Df
+node cli.js status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
 ```
 
 Expected output, read live from the chain:
 
 ```
-agent            0x7668a2effa84eB34d90b1611F867c706904687Df
+agent            0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
 owner            0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 operator         0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 tradingEnabled   true
@@ -97,7 +97,7 @@ Independent of our contract, straight from the Somnia Markets indexer:
 ```bash
 curl -s -X POST https://dev.smk.somnia.host/v1/graphql \
   -H 'content-type: application/json' \
-  -d '{"query":"query { Order(where: {owner: {_eq: \"0x7668a2effa84eb34d90b1611f867c706904687df\"}}) { orderId status price fullQuantity rested } }"}'
+  -d '{"query":"query { Order(where: {owner: {_eq: \"0x8779a3987637ba5de3e802d6bba7f7dd5cd9c92b\"}}) { orderId status price fullQuantity rested } }"}'
 ```
 
 These are real orders resting on a real order book, owned by the agent contract.

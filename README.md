@@ -14,15 +14,15 @@ Built for the Somnia x DreamDEX Event Contracts Hackathon.
 | **Live console** | https://vane-console.vercel.app |
 | **Demo video** | (added at submission) |
 | **Network** | Somnia Shannon testnet, chain 50312 |
-| **Agent** | [`0x7668a2effa84eB34d90b1611F867c706904687Df`](https://shannon-explorer.somnia.network/address/0x7668a2effa84eB34d90b1611F867c706904687Df) |
-| **Factory** | [`0xc17da7a28Ea556f6BfA7a774d9Da486C41574b43`](https://shannon-explorer.somnia.network/address/0xc17da7a28Ea556f6BfA7a774d9Da486C41574b43) |
-| **Tests** | `55` passing, contracts and TypeScript both clean |
+| **Agent** | [`0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B`](https://shannon-explorer.somnia.network/address/0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B) |
+| **Factory** | [`0x5CBe8710c2cFf0E8CeFdAb7e5080F4B5faF7De5D`](https://shannon-explorer.somnia.network/address/0x5CBe8710c2cFf0E8CeFdAb7e5080F4B5faF7De5D) |
+| **Tests** | `75` passing, contracts and TypeScript both clean |
 | **SDK / CLI** | `sdk/`, published as `vane-agent` |
 
 Every number above can be re-derived by anyone, from the chain, in one command:
 
 ```bash
-npx vane status --agent 0x7668a2effa84eB34d90b1611F867c706904687Df
+npx vane status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
 ```
 
 ## Why this is not another trading bot
@@ -50,7 +50,7 @@ curl -s -X POST https://dream-rpc.somnia.network \
 Then read what it has done, straight from contract state:
 
 ```bash
-npx vane status --agent 0x7668a2effa84eB34d90b1611F867c706904687Df
+npx vane status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
 ```
 
 `JUDGE-QUICKSTART.md` is the five-minute version, with the exact output to expect at each step.
@@ -60,6 +60,7 @@ npx vane status --agent 0x7668a2effa84eB34d90b1611F867c706904687Df
 | Vane does this | Using this Somnia or DreamDEX capability |
 |---|---|
 | Is woken by the chain, with nothing running off-chain | Reactivity precompile `0x0100`, `subscribe` with a Solidity handler |
+| Moves itself onto each new window as it opens | A second subscription on DreamDEX's `MarketCreated`, decoded in the handler |
 | Runs housekeeping on a timer without a cron | `scheduleAtTimestamp`, matched on the `Schedule(uint256)` topic |
 | Trades binary up/down windows | `BinaryPool.placeBinaryOrder`, on the on-chain CLOB |
 | Builds inventory with no counterparty | `mintSet`, complete sets of YES and NO |
@@ -84,8 +85,15 @@ accept.
 spend, a cooldown, an allowlist of pools, and a quantity rounded down onto the venue lot grid.
 All enforced on-chain before an order goes out.
 
-**4. It gets the money back.** A scheduled one-shot wake, told apart from a market wake by its
-topic, releases escrow from expired orders and redeems anything that settled.
+**4. It moves itself onto the next window.** A second subscription wakes it on DreamDEX's
+`MarketCreated`. The new pool arrives as an indexed topic, and the venue, collateral and expiry
+sit in fixed slots at the head of the event data, so the agent judges a window and takes it
+without any off-chain help. It holds a book until under ten minutes are left, then takes the next
+one the venue opens.
+
+**5. It gets the money back.** A scheduled one-shot wake, told apart from a market wake by its
+topic, releases escrow from expired orders and redeems anything that settled. Escrow is tracked
+against the pool it was placed in, so moving on never strands it.
 
 ## Custody, stated plainly
 
@@ -130,25 +138,29 @@ To run an agent of your own on Shannon:
 cd sdk && npm link            # provides the `vane` command
 export PRIVATE_KEY=0x...      # a throwaway testnet key, never one holding real funds
 vane faucet                   # 10,000 test tUSDC
-vane create --factory 0xc17da7a28Ea556f6BfA7a774d9Da486C41574b43
+vane create --factory 0x5CBe8710c2cFf0E8CeFdAb7e5080F4B5faF7De5D
 vane fund   --agent 0x... --amount 100
 ```
 
-Then point it at the window that is open right now, because a fresh agent has no active pool and
-a wake with none set stands down with `no active pool set`:
+Then hand it to the chain. `arm` stores two standing instructions: wake me when this market
+moves, and wake me when a new window opens.
+
+```bash
+vane arm    --agent 0x...     # both topics
+vane status --agent 0x...
+vane disarm                   # stops it, and stops spending STT
+```
+
+A fresh agent has no window yet and stands down with `no active pool set` until the venue opens
+one, which is at most a few minutes. To give it a book to trade immediately instead:
 
 ```bash
 cd ..                         # back to the repo root
 AGENT_ADDR=0x... npx hardhat run scripts/point-live.ts --network shannon
 ```
 
-Now hand it to the chain:
-
-```bash
-vane arm    --agent 0x... --topic 0x4ca9766196d8679d9b2e01457f67073d844b29646ce302169de44cd72e593d11
-vane status --agent 0x...
-vane disarm                   # stops it, and stops spending STT
-```
+That is a convenience, not a requirement. The agent replaces whatever it is given at the first
+window it likes better.
 
 ## Reproduce the whole story
 
@@ -177,18 +189,22 @@ an ESM SDK with a CLI. Contract interfaces were derived from the shipped
   this design cannot run on mainnet today.
 - **Custodial by necessity, not by choice.** See the custody section. The mitigations are real
   and tested, but the collateral does sit in a contract.
-- **Arming costs STT continuously, and that is the real limit on this design.** A wake costs
-  0.0011 to 0.0018 STT, and DreamDEX delivers about 2.7 of them a minute, so an armed agent burns
-  roughly 4.2 STT a day. With a chain-enforced 32 STT floor under the subscription owner, a
-  46 STT balance buys about three and a half days of continuous arming, and a Shannon faucet
-  grant is about 1 STT. So the subscription is armed in sessions rather than left on, and the
-  console will often show no live subscription while still showing everything the agent did while
-  it was armed. Keeping one armed indefinitely is a funding problem, not a code one.
+- **Arming costs STT continuously, and that is the real limit on this design.** With both
+  subscriptions live the agent is woken about 4 times a minute at roughly 0.002 STT a wake, which
+  measured out at **8 to 25 STT a day** depending on how much of that is trading rather than
+  standing down. With a chain-enforced 32 STT floor under the subscription owner, a 45 STT balance
+  buys well under a day of continuous arming, and a Shannon faucet grant is about 1 STT. So the
+  subscription is armed in sessions rather than left on, and the console will often show no live
+  subscription while still showing everything the agent did while it was armed. Keeping one armed
+  indefinitely is a funding problem, not a code one.
+- **Roughly half of the venue's window-opening events never reach a subscriber.** Measured at
+  52% delivery over 13 minutes of blocks, with the drops concentrated in large batch
+  transactions. The agent is built around that rather than against it: it accepts the frequent
+  short windows rather than holding out for a rare long one, so a missed event costs minutes, not
+  the session. Full measurement in `SPIKE-FINDINGS.md`.
 - **Positions are valued at book cost.** There is no mark-to-market of an open position.
-- **It does not roll onto the next window by itself.** The subscription's emitter is the markets
-  module rather than any one pool, so the handler acts on the pool the owner set. When a window
-  closes, someone runs `scripts/point-live.ts` to move it forward. Decoding the new pool out of
-  the rollover event would remove that step, and it is the first thing worth building next.
+- **Positions are not rolled between markets.** The agent moves itself onto the next window, but
+  it does not carry an open position across; it reclaims and starts fresh.
 
 ## Notes for other builders
 

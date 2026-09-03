@@ -3,6 +3,14 @@ import { ethers } from "hardhat";
 const TUSDC = "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E";
 const INDEXER = "https://dev.smk.somnia.host/v1/graphql";
 
+/// The DreamDEX venue on Shannon.
+///
+/// ⚠ This is the ONLY field that separates real DreamDEX windows from the "Pricefeed test"
+/// markets the same module creates, in the same bursts, in the same transactions. Both are
+/// marketType BINARY with the same tUSDC collateral, so neither of those can be the filter.
+/// DreamDEX is operatorId 2; the throwaway pricefeed markets are operatorId 4.
+const DREAMDEX_VENUE_ID = "0x679795a0195a1b76cdebb7c51d74e058aee92919b8c3389af86ef24535e8a28c";
+
 /// Pools are recycled every window, so never hardcode one. Ask the indexer which
 /// binary market is trading right now and has room left before it expires.
 async function liveBinaryPool(): Promise<{ pool: string; question: string; expiry: number }> {
@@ -61,6 +69,19 @@ async function main() {
   await (await agent.setPolicy(ethers.parseUnits("10", 6), ethers.parseUnits("50", 6), 0)).wait();
   await (await agent.setTradingEnabled(true)).wait();
   console.log("armed: maxPerWindow 10, reserve 50");
+
+  // Let it move itself onto new windows. The pool set above is only a bootstrap so the
+  // agent has something to trade in its first minutes; the chain replaces it from here.
+  //
+  // 240s floor against DreamDEX's measured ladder (5-minute windows every five minutes,
+  // 15-minute every fifteen, then hourly, four-hourly and daily). It stays on a book until
+  // that window actually ends, then takes the next one the venue opens.
+  //
+  // The floor is deliberately low. Only about half of the module's MarketCreated logs
+  // produce a wake at all (SPIKE-FINDINGS.md), so holding out for a rare long window means
+  // idling; the abundant five-minute windows are the resilient choice.
+  await (await agent.setRollForward(DREAMDEX_VENUE_ID, 240)).wait();
+  console.log("rolls forward on venue", DREAMDEX_VENUE_ID, "with a 240s floor");
 
   console.log("\nexport FACTORY_ADDR=" + factoryAddr);
   console.log("export AGENT_ADDR=" + agentAddr);

@@ -288,3 +288,189 @@ Re-proven on 27 Aug on a second, independent run: nine resting orders, six still
 call, `250.00005 -> 300.0 tUSDC`. Orders past `expireTimestampNs` still report `status: Open` to
 the indexer until something cancels them, which is why the balance and not the status is the
 thing to measure.
+
+---
+
+# Day 6: the agent moves itself onto new windows
+
+The last thing that still needed a person was pointing the agent at the next market. This is how
+that was closed, and the parts that were not obvious.
+
+## The rollover event is `MarketCreated`, and the ABI is not where you would look for it
+
+None of the usual routes work:
+
+- `BinaryMarketsModule` at `0x3ecC694Cef705358864a646142ac17A90E29e388` is a **proxy**. The
+  explorer's `getabi` returns the proxy's own ABI, which has no events worth anything. The
+  EIP-1967 implementation slot points at `0xdf87ac5c4760e2f1dd78e054ce0629a26a4ca5ca`, and that
+  contract is **not verified**, so there is no ABI to fetch.
+- The topic0s are in **no public signature database**. openchain.xyz returns empty for every one
+  of them.
+- The DoraHacks-facing docs do not list them either.
+
+What does work: `npm pack @somnia-chain/markets-sdk`, then hash every event signature in
+`dist/eventsAbi.js` and match the hashes against topic0s pulled from live module logs. That
+recovers the full shape:
+
+```
+MarketCreated(bytes32 indexed marketId, address indexed market, address indexed pool,
+  uint256 oracleQuestionId, uint32 operatorId, bytes32 venueId, address creator,
+  address collateral, uint256 yesId, uint256 noId, uint64 nonce, uint8 outcomeSlotCount,
+  uint8 marketType, uint64 tradingStart, uint64 expiry, uint8 voidPolicy,
+  string asset, uint256 strike, string question, bytes context)
+```
+
+topic0 `0xb5ec75cdb7dbcd28a5f50d152d8833334525a902ef5332ebc19bcf5c0011f8cd`.
+
+Two more from the same file, useful to anyone indexing this module:
+`MarketFinalized(bytes32,address,uint256)` is `0x8f396ac6…`, and
+`PoolReleased(bytes32,address,address)` is `0xa389f948…`.
+
+## The decode is cheap, because everything needed is ahead of the strings
+
+**The new pool is `topic3`**, so it costs one word and no decoding at all. And the three fields
+that decide whether a window is worth taking all sit in the fixed-width head of the data, before
+the dynamic `asset`, `question` and `context`:
+
+| Field | Head slot | Byte range |
+|---|---|---|
+| `operatorId` | 1 | 32..64 |
+| `venueId` | 2 | 64..96 |
+| `collateral` | 4 | 128..160 |
+| `marketType` | 9 | 288..320 |
+| `expiry` | 11 | 352..384 |
+
+So the whole decision is three `abi.decode` calls over calldata slices. No dynamic decoding, no
+stack-too-deep, no `viaIR`.
+
+## ⚠ The venue is the ONLY thing that separates real markets from test ones
+
+DreamDEX emits **"Pricefeed test"** markets from the same module, in the same bursts, in the same
+transactions as the real ones. Measured live on Shannon, they are identical in every field an
+agent would naturally filter on:
+
+| | Real DreamDEX | Pricefeed test |
+|---|---|---|
+| `marketType` | 0 (BINARY) | 0 (BINARY) |
+| `collateral` | tUSDC `0x70a8…5d8E` | tUSDC `0x70a8…5d8E` |
+| `outcomeSlotCount` | 2 | 2 |
+| **`operatorId`** | **2** | **4** |
+| **`venueId`** | **`0x679795a0…35e8a28c`** | **`0x1a1e6821…8a5a050f`** |
+
+An agent that filtered on `marketType` or on the collateral would happily trade the test markets.
+The bot kit's own `packages/ec-core/src/markets.ts` says the same thing, and warns against
+inferring the venue from the deployment manifest because the manifest's "active" venue disagrees
+with where the live markets actually are. Reading the venue out of the event itself avoids both
+problems.
+
+## Windows come in a ladder, so a length floor is not optional
+
+Measured from the indexer over 24 hours on the DreamDEX venue:
+
+| Window length | Roughly how often a pair opens |
+|---|---|
+| 5 minutes | every 5 minutes |
+| 15 minutes | every 15 minutes |
+| 1 hour | hourly |
+| 4 hours | every 4 hours |
+| 24 hours | daily |
+
+They all run **side by side** on the same two questions. So "the newest window" is a useless
+target: an agent taking whatever arrived last would keep landing on 5-minute books that close
+before its own 300-second orders can be reclaimed. Vane takes nothing under `minWindowSeconds`
+(600 by default) and, crucially, **only looks for a window when its current one is nearly done**.
+Without that second half it would abandon a book it was trading every time the venue opened
+anything longer, and end up parked on the daily window.
+
+## Escrow belongs to the pool, not to the agent's idea of "current"
+
+This is the bug that the feature would have introduced. Housekeeping used to reclaim against
+`activePool`. Once the agent can move itself, the orders still resting in the previous book are
+no longer in `activePool`, and reclaiming against the new one silently frees nothing while the
+collateral stays locked in the old one for good. Tracked order ids now carry the pool they were
+placed in, and the old book keeps its allowance until nothing of ours is left in it.
+
+## `eth_getLogs` polling cannot keep up with this chain
+
+Worth restating with a number. A watcher polling every 90 seconds and asking for the last 1000
+blocks **misses events**: Shannon was measured at roughly **15 blocks per second**, so 90 seconds
+is about 1350 blocks and the 1000-block cap silently truncates the range. Poll under 60 seconds,
+or use the indexer, which keeps the history permanently.
+
+## ⚠ Roughly HALF of matching logs never produce a wake
+
+The most important thing learned building this, and the one that changed the design.
+
+A subscription on `MarketCreated` was armed and the agent left running. Then the module's own
+logs were counted against the agent's own on-chain reaction to them, over the same block range:
+
+| Over ~13 minutes of blocks | |
+|---|---|
+| `MarketCreated` logs emitted by the module | 58 |
+| Roll evaluations the agent actually ran | 30 |
+| **Delivered** | **52%** |
+
+This is not the agent rejecting them. Every evaluation, including a rejection, emits a
+`RollSkipped`, and the wake counter increments before any branch. The missing ones produced
+nothing at all: no wake, no event, no counter movement.
+
+Things that were ruled out, each against live data rather than by reasoning:
+
+- **Not a per-transaction cap.** A sample block range with 4 `MarketCreated` logs across 2
+  transactions produced exactly 4 evaluations, so delivery is per LOG, not per transaction.
+- **Not the block gas limit.** The blocks whose logs were dropped were **0.9% and 1.2% full**
+  against a 15,000,000,000 gas limit. There was room for a thousand wakes.
+- **Not a revert in the handler.** A revert would still leave the transaction visible, and the
+  handler cannot revert on a business condition by construction.
+- **Not the subscription lapsing.** Both subscriptions were still registered on the node
+  throughout, and other logs in the same minutes woke the agent normally.
+
+The pattern that does correlate: the dropped logs sat **deep inside large, log-heavy
+transactions**. One dropped batch was a single transaction using **83M gas** and emitting **87
+logs**, with the four `MarketCreated` entries at positions 10, 23, 50 and 77 (global log indexes
+152 to 219). The transactions whose logs were delivered were small ones with two logs.
+
+**What this means for anyone building on reactivity: you cannot treat a subscription as a
+reliable message queue.** Design for a wake that may simply not arrive.
+
+Vane's answer is to depend on frequency rather than on any single event. Instead of holding out
+for the rare long windows, it accepts any window with at least `minWindowSeconds` (240) left, and
+DreamDEX opens a five-minute window every five minutes. At 52% delivery the expected wait for a
+usable one is under ten minutes, and missing one costs nothing but a few minutes.
+
+The first version of this feature had a 600-second floor, which only the 15-minute-and-longer
+windows clear. It sat for **22 minutes without a single successful roll**, because every eligible
+creation in that period happened to be in a dropped batch. That is what the measurement above was
+written to explain.
+
+## An order may not outlive its market: `OrderExpiryBeyondMarket()`, selector `0xd3dea628`
+
+This one only appears once an agent starts moving between windows, which is why it survived
+every earlier session.
+
+Vane placed every order with a flat 300-second lifetime. On the long window it had been pointed
+at by hand, that was always comfortably inside the market, and orders filled. The moment it began
+rolling itself onto five-minute windows, **every single order was rejected** while the agent
+otherwise behaved perfectly: it woke, it chose the right window, it granted the allowance, and
+then logged `pool rejected the order` twenty times in a row.
+
+The pool reverts with a custom error and no reason string, so the rejection is invisible from the
+outside. Recovering it took the same trick as the event ABI: simulate the exact call with
+`eth_call` from the agent's own address, take the four-byte selector out of the revert data
+(`0xd3dea628`), and hash every entry in the markets SDK's `contractErrorsAbi` against it. It is
+`OrderExpiryBeyondMarket()`.
+
+**The fix is to clamp the order's expiry to the market's own.** The agent knows the window end
+for any window it rolled onto itself, because that value came out of the `MarketCreated` event
+that sent it there. Where the window is unknown, because a human pointed it at a pool, it falls
+back to the flat lifetime and behaves exactly as before.
+
+Worth stating plainly for anyone else building here: **a flat order TTL is a bug on this venue.**
+It only looks correct while you are testing against one long-lived market.
+
+## One more reason a pool address is not a window
+
+The indexer returns **114 different markets sharing the single pool address** the agent had rolled
+onto. DreamDEX recycles pool contracts across windows continuously, which is why redemption is
+keyed by market id and never by pool, and why an agent has to carry the window's expiry itself
+rather than ask the pool what it is trading.

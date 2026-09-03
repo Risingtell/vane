@@ -2,14 +2,22 @@
 pragma solidity ^0.8.25;
 
 /// @notice Stand-in for a DreamDEX BinaryPool.
-/// @dev Mirrors the one behaviour that matters to the agent and that was confirmed on
-///      live Shannon: placeBinaryOrder pulls collateral from msg.sender, so an order
-///      without an allowance fails the same way it does on chain.
+/// @dev Mirrors the behaviours that matter to the agent, each confirmed on live Shannon:
+///      placeBinaryOrder pulls collateral from msg.sender, so an order without an
+///      allowance fails the same way it does on chain; and an order may not outlive its
+///      market, which the real pool rejects with `OrderExpiryBeyondMarket()`.
 contract MockBinaryPool {
+    /// @dev Selector 0xd3dea628 on the live venue, recovered from the markets SDK's
+    ///      contractErrorsAbi after an order was rejected with no readable reason.
+    error OrderExpiryBeyondMarket();
+
     address public immutable collateral;
 
     uint128 public nextOrderId = 1;
     bool public rejectEverything;
+
+    /// @notice When this pool's current window ends. Zero disables the check.
+    uint256 public marketExpiry;
 
     struct Order {
         address trader;
@@ -29,6 +37,10 @@ contract MockBinaryPool {
 
     function setRejectEverything(bool v) external {
         rejectEverything = v;
+    }
+
+    function setMarketExpiry(uint256 v) external {
+        marketExpiry = v;
     }
 
     function orderCount() external view returns (uint256) {
@@ -56,6 +68,8 @@ contract MockBinaryPool {
         returns (bool, uint128)
     {
         require(!rejectEverything, "pool rejected");
+        // The real venue refuses an order that would outlive the market it trades.
+        if (marketExpiry != 0 && expiresAt > marketExpiry) revert OrderExpiryBeyondMarket();
 
         // Cost of the position, in collateral. Pulled from the caller, exactly as the
         // real pool does.

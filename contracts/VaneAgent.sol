@@ -43,6 +43,35 @@ contract VaneAgent is SomniaEventHandler {
     /// @notice Ceiling on tracked order ids, so one cancel batch always fits in a block.
     uint256 public constant MAX_TRACKED_ORDERS = 48;
 
+    /// @notice How long an order is allowed to rest, unless its market ends sooner.
+    uint64 public constant ORDER_TTL_SECONDS = 300;
+
+    /// @notice topic0 of DreamDEX's MarketCreated, the event that opens a new window.
+    /// @dev Recovered by hashing every event signature in @somnia-chain/markets-sdk against
+    ///      live BinaryMarketsModule logs. It is worth writing down how, because none of the
+    ///      usual routes work: the module is a proxy whose implementation is unverified on
+    ///      the explorer, and this signature is in no public topic database.
+    ///
+    ///      MarketCreated(bytes32 indexed marketId, address indexed market,
+    ///        address indexed pool, uint256 oracleQuestionId, uint32 operatorId,
+    ///        bytes32 venueId, address creator, address collateral, uint256 yesId,
+    ///        uint256 noId, uint64 nonce, uint8 outcomeSlotCount, uint8 marketType,
+    ///        uint64 tradingStart, uint64 expiry, uint8 voidPolicy, string asset,
+    ///        uint256 strike, string question, bytes context)
+    ///
+    ///      The new pool is topic3, and every field this contract needs to judge a window
+    ///      sits in the fixed-width head of the data, ahead of the dynamic strings. So the
+    ///      whole decision costs three 32-byte reads and no dynamic decoding at all.
+    bytes32 public constant TOPIC_MARKET_CREATED =
+        0xb5ec75cdb7dbcd28a5f50d152d8833334525a902ef5332ebc19bcf5c0011f8cd;
+
+    /// @dev Byte offsets into MarketCreated's data. Head slot n covers [n*32, n*32+32).
+    uint256 private constant OFF_VENUE_ID = 64; // head[2]
+    uint256 private constant OFF_COLLATERAL = 128; // head[4]
+    uint256 private constant OFF_EXPIRY = 352; // head[11]
+    /// @dev Through head[11], which is the last slot this contract reads.
+    uint256 private constant MIN_CREATED_DATA = 384;
+
     // ------------------------------------------------------------------- storage
 
     /// @notice Allowed to trigger trading, never to move funds. The owner can clear it.
@@ -71,6 +100,38 @@ contract VaneAgent is SomniaEventHandler {
     ///      emitter address is not a trading venue. The wake says "something happened in
     ///      the market"; this says where to act on it.
     address public activePool;
+
+    /// @notice When the window behind `activePool` closes, in unix seconds. 0 if unknown.
+    /// @dev Only set when the agent rolled itself onto the pool, since that is the only
+    ///      path that learns the expiry. A manual setActivePool clears it back to 0.
+    uint64 public activePoolExpiry;
+
+    /// @notice The venue this agent will roll itself forward onto. Zero disables rolling.
+    /// @dev ⚠ This is the ONLY field that separates real DreamDEX windows from the
+    ///      "Pricefeed test" markets the same module creates, in the same bursts, in the
+    ///      same transactions. Both are marketType BINARY and both use the same collateral,
+    ///      so neither of those can be used as the filter. Measured on live Shannon:
+    ///      DreamDEX is operatorId 2, the throwaway pricefeed markets are operatorId 4.
+    bytes32 public rollVenueId;
+
+    /// @notice A new window needs at least this long left to be worth moving onto.
+    /// @dev DreamDEX opens one-minute, five-minute and multi-hour windows alongside each
+    ///      other, so without a floor the agent would take whichever arrived last,
+    ///      including one that dies almost immediately.
+    ///
+    ///      ⚠ The default is deliberately low, and that is a direct consequence of a
+    ///      measured platform limitation: only about HALF of the module's MarketCreated
+    ///      logs actually produce a wake (see SPIKE-FINDINGS.md). An agent that would only
+    ///      accept the rare long windows can sit for a very long time waiting for one whose
+    ///      wake is not dropped. Taking the abundant five-minute windows means the next
+    ///      chance is never more than a few minutes away.
+    uint64 public minWindowSeconds = 240;
+
+    /// @notice The pool the tracked order ids belong to.
+    /// @dev Escrow is held by the book the order was placed in. Once the agent can move
+    ///      itself onto a new window, that is no longer always `activePool`, and reclaiming
+    ///      against the wrong pool would quietly strand the collateral.
+    address public orderPool;
 
     /// @notice Order quantities must be a whole multiple of this.
     /// @dev Measured against a live Shannon pool: 1000 is accepted, 100 is not, and an
@@ -105,6 +166,7 @@ contract VaneAgent is SomniaEventHandler {
     uint256 public lastTradeAt;
     uint256 public reclaimCount;
     uint256 public redeemCount;
+    uint256 public rollCount;
 
     // -------------------------------------------------------------------- events
 
@@ -116,6 +178,9 @@ contract VaneAgent is SomniaEventHandler {
     event PoolAllowed(address indexed pool, bool allowed);
     event LotSizeSet(uint256 lotSize);
     event ActivePoolSet(address indexed pool);
+    event RollForwardSet(bytes32 venueId, uint64 minWindowSeconds);
+    event RolledForward(address indexed fromPool, address indexed toPool, uint64 expiry);
+    event RollSkipped(address indexed pool, string reason);
     event Traded(address indexed pool, uint8 kind, uint256 price, uint256 quantity, uint128 orderId);
     event TradeSkipped(address indexed pool, string reason);
     event WokenByChain(address emitter, uint256 blockNumber);
@@ -209,9 +274,25 @@ contract VaneAgent is SomniaEventHandler {
     }
 
     /// @notice Set the pool the agent acts on when woken.
+    /// @dev Clears the known expiry: a hand-picked pool carries no window information, and
+    ///      leaving a stale expiry here would stop the agent rolling off it later.
     function setActivePool(address pool) external onlyOwner {
         activePool = pool;
+        activePoolExpiry = 0;
         emit ActivePoolSet(pool);
+    }
+
+    /// @notice Let the agent move itself onto new windows as the chain opens them.
+    /// @param venueId_ The venue to follow. Zero switches rolling off entirely, which
+    ///        leaves the agent on whatever pool it was last pointed at by hand.
+    /// @param minWindowSeconds_ How much of a window has to be left for it to be worth
+    ///        taking. Raising this makes the agent pickier, but roughly half of the
+    ///        venue's window-opening events never reach a subscriber, so being picky
+    ///        costs idle time rather than buying a better window.
+    function setRollForward(bytes32 venueId_, uint64 minWindowSeconds_) external onlyOwner {
+        rollVenueId = venueId_;
+        minWindowSeconds = minWindowSeconds_;
+        emit RollForwardSet(venueId_, minWindowSeconds_);
     }
 
     /// @notice Set the order price and type used by the default strategy.
@@ -258,20 +339,30 @@ contract VaneAgent is SomniaEventHandler {
     /// @dev Invoked by the reactivity precompile when a subscribed market event lands.
     ///      It must never revert on a business condition: a revert rolls the whole wake
     ///      back and leaves no trace of why nothing happened.
-    function _onEvent(address emitter, bytes32[] calldata eventTopics, bytes calldata) internal override {
+    function _onEvent(address emitter, bytes32[] calldata eventTopics, bytes calldata data) internal override {
         unchecked {
             wakeCount++;
         }
         emit WokenByChain(emitter, block.number);
 
-        // Two kinds of wake arrive here, and topic0 tells them apart. A one-shot armed with
-        // scheduleAtTimestamp fires the precompile's own Schedule event, and that is the
-        // housekeeping pass: free escrow and claim anything that settled. Every other topic
-        // is real market activity, so it is a chance to trade.
+        // Three kinds of wake arrive here, and topic0 tells them apart. A one-shot armed
+        // with scheduleAtTimestamp fires the precompile's own Schedule event, and that is
+        // the housekeeping pass: free escrow and claim anything that settled.
         if (eventTopics.length != 0 && eventTopics[0] == TOPIC_SCHEDULE) {
             _housekeep();
             return;
         }
+
+        // A window opening is the chain telling the agent where to go next. This is the
+        // step that used to need a person: the subscription's emitter is the markets
+        // module rather than any one pool, so without this the agent stays pointed at a
+        // book that has already closed and every order it places is rejected.
+        if (eventTopics.length != 0 && eventTopics[0] == TOPIC_MARKET_CREATED) {
+            _rollForward(emitter, eventTopics, data);
+            return;
+        }
+
+        // Everything else is market activity, so it is a chance to trade.
 
         // Trade the configured pool. If the emitter happens to BE an allowed pool, prefer
         // it, so a per-pool subscription acts on the pool that actually moved.
@@ -283,14 +374,107 @@ contract VaneAgent is SomniaEventHandler {
         _tryTrade(target);
     }
 
+    /// @notice Move the agent onto a window the chain has just opened.
+    /// @dev Never reverts on a business condition. A revert here would roll the whole wake
+    ///      back, including the wake counter, and leave no record of why nothing happened.
+    function _rollForward(address emitter, bytes32[] calldata eventTopics, bytes calldata data) private {
+        // Defence in depth. The subscription already filters on the module as the emitter,
+        // but a subscription armed differently must never be able to point this agent at a
+        // pool of somebody else's choosing.
+        if (emitter != MARKETS_MODULE) {
+            emit RollSkipped(address(0), "wrong emitter");
+            return;
+        }
+        if (rollVenueId == bytes32(0)) {
+            emit RollSkipped(address(0), "rolling not configured");
+            return;
+        }
+        if (eventTopics.length < 4 || data.length < MIN_CREATED_DATA) {
+            emit RollSkipped(address(0), "unexpected event shape");
+            return;
+        }
+
+        address pool = address(uint160(uint256(eventTopics[3])));
+        if (pool == address(0)) {
+            emit RollSkipped(pool, "no pool in event");
+            return;
+        }
+
+        // abi.decode over a calldata slice, rather than raw word loads, so a malformed
+        // head is rejected instead of silently read as a plausible-looking value.
+        if (abi.decode(data[OFF_VENUE_ID:OFF_VENUE_ID + 32], (bytes32)) != rollVenueId) {
+            emit RollSkipped(pool, "different venue");
+            return;
+        }
+        if (abi.decode(data[OFF_COLLATERAL:OFF_COLLATERAL + 32], (address)) != address(collateral)) {
+            emit RollSkipped(pool, "different collateral");
+            return;
+        }
+
+        uint64 expiry = abi.decode(data[OFF_EXPIRY:OFF_EXPIRY + 32], (uint64));
+        if (expiry < block.timestamp + minWindowSeconds) {
+            emit RollSkipped(pool, "window too short");
+            return;
+        }
+
+        // Stay on a book until its window actually ends. DreamDEX runs a whole ladder side
+        // by side, measured on Shannon over 24h: 5-minute windows every five minutes,
+        // 15-minute every fifteen, then hourly, four-hourly and daily. Without this the
+        // agent would abandon a book it is happily trading every time the venue opened
+        // anything longer, and end up parked on the daily window all day.
+        //
+        // An expiry of 0 means the pool was chosen by hand and its window is unknown, so
+        // the agent treats itself as needing one.
+        if (activePool != address(0) && activePoolExpiry > block.timestamp) {
+            emit RollSkipped(pool, "current window still open");
+            return;
+        }
+        // Having decided it needs a window, take the first one offered that beats what it
+        // has. A creation burst arrives as several separate wakes, so this settles on the
+        // first tradable book rather than hopping through the rest of the burst.
+        if (pool == activePool || expiry <= activePoolExpiry) {
+            emit RollSkipped(pool, "no better than the current window");
+            return;
+        }
+
+        address previous = activePool;
+
+        // Free what the old book is still holding before walking away from it. Orders that
+        // have not expired yet stay tracked against `orderPool`, so the scheduled
+        // housekeeping wake can still collect them after the move.
+        if (openOrderIds.length != 0 && orderPool != address(0)) {
+            try this.reclaimExpired(orderPool) {} catch {}
+        }
+
+        poolAllowed[pool] = true;
+        collateral.approve(pool, type(uint256).max);
+        activePool = pool;
+        activePoolExpiry = expiry;
+        unchecked {
+            rollCount++;
+        }
+        emit PoolAllowed(pool, true);
+        emit ActivePoolSet(pool);
+        emit RolledForward(previous, pool, expiry);
+
+        // Drop the old book's allowance, but only once nothing of ours is resting in it.
+        if (previous != address(0) && previous != pool && openOrderIds.length == 0) {
+            poolAllowed[previous] = false;
+            collateral.approve(previous, 0);
+            emit PoolAllowed(previous, false);
+        }
+    }
+
     /// @notice The scheduled pass: get money back. Also callable by hand.
     function housekeep() external {
         _housekeep();
     }
 
     function _housekeep() private {
-        if (activePool != address(0) && openOrderIds.length != 0) {
-            this.reclaimExpired(activePool);
+        // Against `orderPool`, not `activePool`. Once the agent rolls itself forward those
+        // are different, and the escrow is in the book the orders were placed in.
+        if (orderPool != address(0) && openOrderIds.length != 0) {
+            this.reclaimExpired(orderPool);
         }
         if (pendingMarket != address(0)) {
             this.sweepSettled(pendingMarketId, pendingMarket);
@@ -344,6 +528,21 @@ contract VaneAgent is SomniaEventHandler {
             }
         }
 
+        // An order may not outlive its market: the pool reverts `OrderExpiryBeyondMarket()`
+        // (selector 0xd3dea628). That never showed up while the agent sat on one long
+        // window chosen by hand, and then rejected every order the moment it began moving
+        // itself onto five-minute ones. The expiry is only known for a window the agent
+        // rolled onto itself, so clamp when it is known and fall back to the flat lifetime
+        // when it is not.
+        uint64 orderExpiry = uint64(block.timestamp) + ORDER_TTL_SECONDS;
+        if (pool == activePool && activePoolExpiry != 0 && activePoolExpiry < orderExpiry) {
+            orderExpiry = activePoolExpiry;
+        }
+        if (orderExpiry <= block.timestamp) {
+            emit TradeSkipped(pool, "window already closed");
+            return;
+        }
+
         lastTradedAt[pool] = block.timestamp;
 
         // A rejected order must not roll back the wake, so the call is contained.
@@ -351,7 +550,7 @@ contract VaneAgent is SomniaEventHandler {
             kind,
             price,
             quantity,
-            uint64(block.timestamp + 300) * 1_000_000_000,
+            orderExpiry * 1_000_000_000,
             orderType,
             0, // self-match: cancel the remainder of our own taker
             address(0),
@@ -365,7 +564,14 @@ contract VaneAgent is SomniaEventHandler {
             // Remembered so escrow can be released later. An order that rests and then
             // expires keeps its collateral until something cancels it. Capped so the
             // cancel batch cannot grow past what fits in one transaction.
-            if (orderId != 0 && openOrderIds.length < MAX_TRACKED_ORDERS) openOrderIds.push(orderId);
+            //
+            // Ids are only ever tracked for ONE book at a time, because that is what the
+            // cancel call takes. An id that is not tracked is still in its Traded event,
+            // so anyone can always cancel it on the pool directly.
+            if (orderId != 0 && openOrderIds.length < MAX_TRACKED_ORDERS) {
+                if (openOrderIds.length == 0) orderPool = pool;
+                if (orderPool == pool) openOrderIds.push(orderId);
+            }
             emit Traded(pool, kind, price, quantity, orderId);
         } catch {
             emit TradeSkipped(pool, "pool rejected the order");
