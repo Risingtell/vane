@@ -272,6 +272,35 @@ describe("VaneAgent getting money back", () => {
       expect(await f.agent.wakeCount()).to.equal(1n);
       expect(await f.agent.tradeCount()).to.equal(0n);
     });
+
+    // The operator is trusted to trade and nothing else. Nominating a market it cannot
+    // redeem must not be a way to stop the chain's scheduled wakes from being recorded.
+    it("survives an operator pointing it at a market that does not answer", async () => {
+      const f = await deploy();
+      // An address with no code at all. Every call into it reverts.
+      await as$(f.agent, f.operator).setPendingMarket(MARKET_ID, await f.stranger.getAddress());
+
+      await expect(wake(f.agentAddr, f.reactivityAddr, f.poolAddr, [TOPIC_SCHEDULE]))
+        .to.emit(f.agent, "SweepSkipped")
+        .withArgs(MARKET_ID, "market did not answer");
+
+      // The whole point: the wake is still on the record.
+      expect(await f.agent.wakeCount()).to.equal(1n);
+    });
+
+    it("still frees escrow even when the sweep half fails", async () => {
+      const f = await deploy();
+      await as$(f.agent, f.operator).poke(f.poolAddr);
+      await passExpiry();
+      await as$(f.agent, f.operator).setPendingMarket(MARKET_ID, await f.stranger.getAddress());
+
+      const before = await f.collateral.balanceOf(f.agentAddr);
+      await wake(f.agentAddr, f.reactivityAddr, f.poolAddr, [TOPIC_SCHEDULE]);
+
+      expect(await f.agent.reclaimCount()).to.equal(1n);
+      expect(await f.collateral.balanceOf(f.agentAddr)).to.be.greaterThan(before);
+      expect(await f.agent.wakeCount()).to.equal(1n);
+    });
   });
 
   describe("strategy", () => {

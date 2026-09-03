@@ -62,8 +62,9 @@ cd vane/sdk && npm install ethers
 node cli.js status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
 ```
 
-Expected output. This is a real capture, and **the counters only ever go up**, so the numbers you
-see will be equal or higher. Nothing here can be reset or faked:
+Expected output. This is a real capture, read from the chain on **3 September 2026**, and **the
+counters only ever go up**, so the numbers you see will be equal or higher. Nothing here can be
+reset or faked:
 
 ```
 agent            0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
@@ -110,9 +111,6 @@ Two readings that are **not** failures, and are the two most likely to mislead y
 | `redeemCount` | settled positions turned back into collateral |
 | `trackedOrders` | orders still holding escrow; zero means nothing is stranded |
 
-These counters only ever go up, so treat the numbers above as a floor rather than an exact
-match. They were read from the chain on 27 Aug 2026.
-
 `wakeCount` is the number that matters. It only increments inside `onEvent`, and `onEvent`
 reverts unless `msg.sender` is the reactivity precompile at `0x0100`. Nothing else can raise it,
 which is why it is proof of the claim even when nothing is armed today.
@@ -129,7 +127,16 @@ curl -s -X POST https://dev.smk.somnia.host/v1/graphql \
   -d '{"query":"query { Order(where: {owner: {_eq: \"0x8779a3987637ba5de3e802d6bba7f7dd5cd9c92b\"}}) { orderId status price fullQuantity rested } }"}'
 ```
 
-These are real orders resting on a real order book, owned by the agent contract.
+These are real orders in DreamDEX's own order history, owned by the agent contract rather than by
+a bot or by anyone's wallet.
+
+Expect every one of them to read `status: Filled` and `rested: false`. At the last check that was
+**14 of 14**. That is the design rather than a fault: the default order type is
+immediate-or-cancel, so an order crosses and fills and the venue cancels any unfilled remainder
+instead of leaving it on the book. A resting bid that never fills leaves no position to settle and
+nothing to redeem, and its collateral sits locked until something cancels it.
+
+So this is the venue's own record that the contract did not merely place orders, it got filled.
 
 ---
 
@@ -155,7 +162,7 @@ npm install
 npx hardhat test
 ```
 
-Expect **75 passing**. The tests are named after the claims they defend. The ones worth
+Expect **77 passing**. The tests are named after the claims they defend. The ones worth
 reading first:
 
 - `lets only the owner withdraw`
@@ -165,6 +172,8 @@ reading first:
 - `is permissionless, so funds are not stranded if the operator vanishes`
 - `claims BOTH sides of a voided market`
 - `reclaims and redeems instead of trading` (the scheduled housekeeping wake)
+- `survives an operator pointing it at a market that does not answer`
+- `still frees escrow even when the sweep half fails`
 
 And, for the part that moves it between windows on its own:
 

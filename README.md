@@ -16,7 +16,7 @@ Built for the Somnia x DreamDEX Event Contracts Hackathon.
 | **Network** | Somnia Shannon testnet, chain 50312 |
 | **Agent** | [`0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B`](https://shannon-explorer.somnia.network/address/0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B) |
 | **Factory** | [`0x5CBe8710c2cFf0E8CeFdAb7e5080F4B5faF7De5D`](https://shannon-explorer.somnia.network/address/0x5CBe8710c2cFf0E8CeFdAb7e5080F4B5faF7De5D) |
-| **Tests** | `75` passing, contracts and TypeScript both clean |
+| **Tests** | `77` passing, contracts and TypeScript both clean |
 | **SDK / CLI** | `sdk/`, an ESM SDK plus a `vane` command |
 
 Every number above can be re-derived by anyone, from the chain, in one command:

@@ -470,14 +470,28 @@ contract VaneAgent is SomniaEventHandler {
         _housekeep();
     }
 
+    /// @dev Both halves are contained, for the same reason the wake path is: a revert here
+    ///      rolls back the whole wake, including `wakeCount`, and destroys the only record
+    ///      that the chain called at all.
+    ///
+    ///      This matters most for the sweep. `sweepSettled` reaches into a market contract
+    ///      nominated by `setPendingMarket`, which the OPERATOR may call, and it touches
+    ///      that address before it reaches any guarded call. So an operator pointing at a
+    ///      market that does not answer, or at no contract at all, could otherwise stop
+    ///      every scheduled wake. The operator is trusted to trade and nothing more, so it
+    ///      must not be able to do that. Failing one half must also never cost the other.
     function _housekeep() private {
         // Against `orderPool`, not `activePool`. Once the agent rolls itself forward those
         // are different, and the escrow is in the book the orders were placed in.
         if (orderPool != address(0) && openOrderIds.length != 0) {
-            this.reclaimExpired(orderPool);
+            try this.reclaimExpired(orderPool) {} catch {
+                emit ReclaimSkipped(orderPool, "reclaim reverted");
+            }
         }
         if (pendingMarket != address(0)) {
-            this.sweepSettled(pendingMarketId, pendingMarket);
+            try this.sweepSettled(pendingMarketId, pendingMarket) {} catch {
+                emit SweepSkipped(pendingMarketId, "market did not answer");
+            }
         }
     }
 
