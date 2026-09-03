@@ -273,6 +273,12 @@ subscription owner holding 46 STT has about **three and a half days** of continu
 it falls under the floor, and a Shannon faucet grant is ~1 STT. An always-on agent needs a funded
 operator, which is a sponsor decision, not a code one.
 
+⚠ **These figures are for ONE subscription, and the agent now runs two.** Re-measured on 3 Sep
+with both the market-activity and the new-window subscription armed: about 4 to 8 wakes a minute
+at roughly 0.002 to 0.004 STT each, which works out at **8 to 25 STT a day** depending on how much
+of that is trading rather than standing down. On a 44 STT balance against the 32 floor that is
+well under a day. The conclusion does not change, it gets sharper: this is armed in sessions.
+
 ## `eth_getLogs` is capped at 1000 blocks, and Somnia makes ten blocks a second
 
 The node rejects any `eth_getLogs` range wider than 1000 blocks with `block range exceeds 1000`.

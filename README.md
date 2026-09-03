@@ -17,12 +17,14 @@ Built for the Somnia x DreamDEX Event Contracts Hackathon.
 | **Agent** | [`0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B`](https://shannon-explorer.somnia.network/address/0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B) |
 | **Factory** | [`0x5CBe8710c2cFf0E8CeFdAb7e5080F4B5faF7De5D`](https://shannon-explorer.somnia.network/address/0x5CBe8710c2cFf0E8CeFdAb7e5080F4B5faF7De5D) |
 | **Tests** | `75` passing, contracts and TypeScript both clean |
-| **SDK / CLI** | `sdk/`, published as `vane-agent` |
+| **SDK / CLI** | `sdk/`, an ESM SDK plus a `vane` command |
 
 Every number above can be re-derived by anyone, from the chain, in one command:
 
 ```bash
-npx vane status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
+git clone https://github.com/Risingtell/vane.git
+cd vane/sdk && npm install ethers
+node cli.js status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
 ```
 
 ## Why this is not another trading bot
@@ -50,7 +52,9 @@ curl -s -X POST https://dream-rpc.somnia.network \
 Then read what it has done, straight from contract state:
 
 ```bash
-npx vane status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
+git clone https://github.com/Risingtell/vane.git
+cd vane/sdk && npm install ethers
+node cli.js status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
 ```
 
 `JUDGE-QUICKSTART.md` is the five-minute version, with the exact output to expect at each step.
