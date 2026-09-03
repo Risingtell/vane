@@ -203,6 +203,12 @@ an ESM SDK with a CLI. Contract interfaces were derived from the shipped
   short windows rather than holding out for a rare long one, so a missed event costs minutes, not
   the session. Full measurement in `SPIKE-FINDINGS.md`.
 - **Positions are valued at book cost.** There is no mark-to-market of an open position.
+- **Order ids are tracked for one book at a time.** If the agent moves to a new window while
+  orders it placed are still tracked against the previous one, orders on the new book are not
+  added to the reclaim list until the old ones clear. In the shipped configuration this is close
+  to moot, because the default order type is immediate-or-cancel and an unfilled remainder is
+  cancelled rather than left resting, so there is no escrow to chase. It would matter to anyone
+  who reconfigures the agent to rest limit orders.
 - **Positions are not rolled between markets.** The agent moves itself onto the next window, but
   it does not carry an open position across; it reclaims and starts fresh.
 

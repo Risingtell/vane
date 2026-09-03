@@ -22,8 +22,10 @@ curl -s -X POST https://dream-rpc.somnia.network \
   -d '{"jsonrpc":"2.0","id":1,"method":"somnia_reactivityGetSubscriptions","params":["0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053"]}'
 ```
 
-**If it returns a subscription id**, the chain is holding a standing instruction to call our
-contract, and no server of ours is involved. Look it up:
+**If it returns subscription ids**, the chain is holding standing instructions to call our
+contract, and no server of ours is involved. There are normally two: one wakes the agent on
+market activity so it can trade, and one wakes it when DreamDEX opens a new window so it can move
+itself onto it. Look either up:
 
 ```bash
 curl -s -X POST https://dream-rpc.somnia.network \
@@ -39,9 +41,9 @@ Check three fields:
 | `handler_function_selector` | `0x53edf33d` | that is `onEvent(address,bytes32[],bytes)` |
 | `emitter` | `0x3ecC694Cef705358864a646142ac17A90E29e388` | DreamDEX BinaryMarketsModule |
 
-**If it returns `[]`, that is expected and not a failure.** An armed subscription burns about
-4.2 STT a day at the rate DreamDEX delivers events, and the chain enforces a 32 STT floor under
-the owner, so it is armed in sessions rather than left on. The measurements are in
+**If it returns `[]`, that is expected and not a failure.** Two armed subscriptions burn 8 to 25
+STT a day at the rate DreamDEX delivers events, and the chain enforces a 32 STT floor under the
+owner, so they are armed in sessions rather than left on. The measurements are in
 `SPIKE-FINDINGS.md`. Step 2 is the permanent record, and it lives in contract state, not in a
 database of ours.
 
@@ -62,16 +64,27 @@ agent            0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
 owner            0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 operator         0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 tradingEnabled   true
-activePool       0x54D90260Fe949940A80602E7fDa8ebD729c5BE00
+activePool       0x2AA87ab604568374Bbe98CaF308273cc0Dd7085a
+activePoolExpiry 1788427200
+windowSecondsLeft 201
+rollsForward     true
+rollVenueId      0x679795a0195a1b76cdebb7c51d74e058aee92919b8c3389af86ef24535e8a28c
+minWindowSeconds 240
+orderPool        0x246a65643ad8b6C6Dbd0b017A259DA07681242FD
 maxPerWindow     10.0
-reserve          250.0
-freeCollateral   300.0
-wakeCount        28
-tradeCount       9
-reclaimCount     2
-redeemCount      1
-trackedOrders    0
+reserve          50.0
+freeCollateral   219.58136
+wakeCount        48
+tradeCount       12
+reclaimCount     0
+redeemCount      0
+rollCount        2
+trackedOrders    4
 ```
+
+`rollCount` is the one to look at. It counts windows the agent picked out of a `MarketCreated`
+event and moved onto by itself. `activePool` is wherever that left it, and `windowSecondsLeft`
+counts down to the end of that window. Nobody chose that pool.
 
 | Field | Means |
 |---|---|
