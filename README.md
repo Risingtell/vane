@@ -38,6 +38,12 @@ event subscription in chain state and invoke a contract when a matching log is c
 registers itself with that precompile and is then driven entirely by the chain. Turn off every
 machine involved and it keeps trading.
 
+Put another way: **Vane is not a bot that automates event contracts, it is an event-contract-native
+agent.** Somnia reactivity calls the Solidity contract directly, and the contract chooses the next
+window, trades it, reclaims its escrow and redeems what settles. Most ways of automating this
+still depend on something that keeps running, a delegated key, or a wallet the user has to sign
+with when a window rolls. Vane removes that layer rather than hiding it.
+
 ## Verify it yourself in about sixty seconds
 
 Ask the node what it is holding. If the chain has a subscription naming the agent as its
@@ -99,6 +105,26 @@ one the venue opens.
 topic, releases escrow from expired orders and redeems anything that settled. Escrow is tracked
 against the pool it was placed in, so moving on never strands it.
 
+## Why this matters to DreamDEX
+
+- **More trading activity.** An agent can act on any event the venue emits, at any hour, without
+  anyone being awake or any process being up.
+- **More builder surface.** The reactivity integration, the event decoding and the window
+  selection are a reusable pattern for any reactive event-contract app, not just this one. The
+  SDK and CLI are in `sdk/`, and `SPIKE-FINDINGS.md` and `FEEDBACK-REPORT.md` exist so the next
+  builder does not pay the same costs.
+- **Better retention.** A user sets a policy once and the chain executes it. There is no session
+  to keep alive and nothing to log back into.
+- **Safer automation.** One agent per user from a factory, owner-only and unconditional
+  withdrawal, an operator that can trade and can never move funds, and reclaim and redeem that
+  anyone can trigger so nothing is stranded if the operator disappears.
+- **The honest limit.** Always-on operation needs a funded subscription owner, because arming
+  burns STT against a chain-enforced floor. That is a cost question for the ecosystem, not a
+  missing feature. The measurements are in `SPIKE-FINDINGS.md`.
+
+This is a claim about the execution model, not about the strategy. The strategy shipped here is
+deliberately simple and makes no claim to make money.
+
 ## Custody, stated plainly
 
 DreamDEX gives a third party no way to trade event contracts for someone else. Both routes are
@@ -135,6 +161,9 @@ npm install
 npx hardhat compile
 npx hardhat test
 ```
+
+On Windows, if PowerShell refuses to run `npm`, that is the default execution policy blocking
+`npm.ps1` rather than anything in this repo. Use `npm.cmd` and `npx.cmd`, or run it from Git Bash.
 
 To run an agent of your own on Shannon:
 

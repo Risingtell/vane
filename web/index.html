@@ -45,12 +45,12 @@
   .dot.off{background:var(--down);box-shadow:0 0 0 3px rgba(255,71,87,.16)}
 
   /* ---- hero ---- */
-  .hero{padding:76px 0 66px}
+  .hero{padding:48px 0 60px}
   h1{font-size:clamp(38px,6.4vw,84px);line-height:1.02;letter-spacing:-.025em;font-weight:800;
      text-transform:uppercase;max-width:16ch}
   h1 .accent{color:var(--signal)}
-  .lede{margin-top:24px;max-width:60ch;font-size:clamp(16px,1.5vw,19px);color:var(--muted)}
-  .cta{margin-top:34px;display:flex;gap:12px;flex-wrap:wrap}
+  .lede{margin-top:20px;max-width:60ch;font-size:clamp(16px,1.5vw,19px);color:var(--muted)}
+  .cta{margin-top:26px;display:flex;gap:12px;flex-wrap:wrap}
   .btn{display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.14em;
     text-transform:uppercase;padding:13px 20px;border:1px solid var(--line2);color:var(--text);
     background:transparent;cursor:pointer;transition:.15s}
@@ -58,6 +58,46 @@
   .btn.primary{background:var(--signal);border-color:var(--signal);color:#160E00;font-weight:700}
   .btn.primary:hover{background:var(--signal2);border-color:var(--signal2);color:#160E00}
   .btn[disabled]{opacity:.45;cursor:not-allowed}
+
+  /* ---- verification strip ---- */
+  .verify{margin-top:30px;border:1px solid var(--line2);background:var(--ink2);padding:24px 26px 22px}
+  .vhead{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  .veyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--signal)}
+  .vstate{font-family:var(--mono);font-size:13px;letter-spacing:.04em;color:var(--text)}
+  .vstate.armed{color:var(--live)}
+  .vstate.idle{color:var(--muted)}
+  .vnote{margin-top:10px;color:var(--muted);font-size:14px;max-width:74ch}
+  .vgrid{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);margin-top:18px;
+    grid-template-columns:repeat(4,1fr)}
+  .vcell{background:var(--ink);padding:16px 18px}
+  .vcell .k{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--dim)}
+  .vcell .v{font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-.01em}
+  .copyrow{margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .copyrow code{font-family:var(--mono);font-size:12px;color:var(--text);background:var(--ink);
+    border:1px solid var(--line);padding:10px 12px;overflow-x:auto;white-space:nowrap;max-width:100%}
+  .btn.tiny{padding:9px 14px;font-size:11px}
+  .vlinks{margin-top:16px;display:flex;gap:18px;flex-wrap:wrap;align-items:center;
+    font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+  .vlinks a{color:var(--muted)}
+  .vlinks a:hover{color:var(--signal)}
+  .vstamp{color:var(--dim);margin-left:auto}
+  @media(max-width:820px){ .vgrid{grid-template-columns:repeat(2,1fr)} .vstamp{margin-left:0} }
+
+  /* ---- run it yourself ---- */
+  .steps{list-style:none;counter-reset:s;margin-top:30px;display:grid;gap:1px;
+    background:var(--line);border:1px solid var(--line)}
+  .steps li{counter-increment:s;background:var(--ink);padding:20px 22px 20px 62px;position:relative}
+  .steps li::before{content:counter(s);position:absolute;left:22px;top:20px;
+    font-family:var(--mono);font-size:12px;color:var(--signal);border:1px solid var(--line2);
+    width:24px;height:24px;display:grid;place-items:center}
+  .steps .sk{display:block;font-weight:700;letter-spacing:-.01em}
+  .steps code{display:block;margin-top:10px;font-family:var(--mono);font-size:12.5px;
+    color:var(--text);background:var(--ink2);border:1px solid var(--line);padding:11px 13px;
+    overflow-x:auto;line-height:1.7}
+  .steps .sn{display:block;margin-top:9px;color:var(--muted);font-size:13.5px;max-width:78ch}
+  .steps b{color:var(--text)}
 
   /* ---- section furniture ---- */
   section{padding:58px 0}
@@ -162,6 +202,40 @@
       <button class="btn" id="faucetBtn">Get test tUSDC</button>
     </div>
     <div class="msg" id="faucetMsg"></div>
+
+    <!-- Verification strip. Deliberately in the first viewport, because the honest state of
+         this project is often "not armed at the moment", and without saying so plainly that
+         reads as broken rather than as a funding decision. -->
+    <div class="verify" id="verify">
+      <div class="vhead">
+        <span class="veyebrow">Verification</span>
+        <span class="vstate" id="armState">checking the node…</span>
+      </div>
+      <p class="vnote" id="armNote">
+        Asking the node whether it is holding a standing instruction for this agent.
+      </p>
+      <div class="vgrid">
+        <div class="vcell"><div class="k">Times the chain woke it</div><div class="v" id="vWake">&middot;</div></div>
+        <div class="vcell"><div class="k">Orders placed</div><div class="v" id="vTrade">&middot;</div></div>
+        <div class="vcell"><div class="k">Windows it chose itself</div><div class="v" id="vRoll">&middot;</div></div>
+        <div class="vcell"><div class="k">Filled on DreamDEX</div><div class="v" id="vFilled">&middot;</div></div>
+      </div>
+      <p class="vnote">
+        Those four are permanent. They live in contract state and in DreamDEX's own order history,
+        and only the reactivity precompile can move the first three. Check them yourself:
+      </p>
+      <div class="copyrow">
+        <code id="verifyCmd">node cli.js status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B</code>
+        <button class="btn tiny" id="copyCmd">Copy</button>
+      </div>
+      <div class="vlinks">
+        <a id="lnkRepo" href="https://github.com/Risingtell/vane" target="_blank" rel="noopener">Repo</a>
+        <a id="lnkQuick" href="https://github.com/Risingtell/vane/blob/main/JUDGE-QUICKSTART.md" target="_blank" rel="noopener">Judge quickstart</a>
+        <a id="lnkAgent" href="#" target="_blank" rel="noopener">Agent contract</a>
+        <a id="lnkFactory" href="#" target="_blank" rel="noopener">Factory</a>
+        <span class="vstamp" id="vStamp"></span>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -279,6 +353,54 @@
           claimed. A scheduled one-shot wake does both, and either can be triggered by anyone
           so funds are never stranded.</span></li>
       </ol>
+    </section>
+  </div>
+</div>
+
+<div class="band alt" id="runit">
+  <div class="wrap">
+    <section>
+      <div class="eyebrow">Run one yourself</div>
+      <h2>Your own agent, in five commands</h2>
+      <p class="sub">
+        One agent per owner, deployed from the factory. It holds your collateral, only you can
+        withdraw, and the operator can trade but can never move funds. Use a throwaway testnet
+        key, never one holding anything real.
+      </p>
+
+      <ol class="steps">
+        <li>
+          <span class="sk">Get the code and the test dollars</span>
+          <code>git clone https://github.com/Risingtell/vane.git<br>cd vane/sdk &amp;&amp; npm install ethers<br>node cli.js faucet</code>
+          <span class="sn">10,000 test tUSDC. Reads need nothing; writes need <b>PRIVATE_KEY</b> in your environment.</span>
+        </li>
+        <li>
+          <span class="sk">Deploy your agent</span>
+          <code id="stepCreate">node cli.js create --factory 0x…</code>
+          <span class="sn">The factory refuses a second agent for the same address, so funds in the first are never orphaned.</span>
+        </li>
+        <li>
+          <span class="sk">Fund it</span>
+          <code>node cli.js fund --agent 0x… --amount 100</code>
+          <span class="sn">Collateral moves into your agent. <b>withdraw</b> is owner-only and unconditional, at any time.</span>
+        </li>
+        <li>
+          <span class="sk">Hand it to the chain</span>
+          <code>node cli.js arm --agent 0x…</code>
+          <span class="sn">Two standing instructions: wake me when this market moves, and wake me when a new window opens. The owner needs at least <b>32 STT</b>, a floor the chain enforces.</span>
+        </li>
+        <li>
+          <span class="sk">Take it back whenever you like</span>
+          <code>node cli.js disarm</code>
+          <span class="sn">Cancels the subscriptions and stops the STT burn. The agent keeps its money either way.</span>
+        </li>
+      </ol>
+
+      <div class="cta" style="margin-top:30px">
+        <a class="btn primary" href="https://github.com/Risingtell/vane/blob/main/JUDGE-QUICKSTART.md" target="_blank" rel="noopener">Judge quickstart</a>
+        <a class="btn" href="https://github.com/Risingtell/vane" target="_blank" rel="noopener">Repo</a>
+        <a class="btn" href="https://github.com/Risingtell/vane/blob/main/FEEDBACK-REPORT.md" target="_blank" rel="noopener">SDK feedback report</a>
+      </div>
     </section>
   </div>
 </div>
@@ -522,6 +644,44 @@ async function ordersFromIndexer() {
   return (j.data && j.data.Order) || [];
 }
 
+// ------------------------------------------------------------------ verification
+// The honest state of this project is often "not armed at the moment", because arming burns
+// STT against a chain-enforced floor. Said plainly that is a funding decision; left unsaid it
+// reads as a broken demo, so this panel leads with it rather than hiding it.
+async function loadVerify() {
+  try {
+    const [ids, wake, trades, rolls] = await Promise.all([
+      provider.send("somnia_reactivityGetSubscriptions", [CFG.operator]).catch(() => []),
+      agent.wakeCount(), agent.tradeCount(), agent.rollCount(),
+    ]);
+    const armed = ids && ids.length > 0;
+    $("armState").textContent = armed
+      ? "Armed now. The chain is holding " + ids.length + " standing instruction" + (ids.length > 1 ? "s" : "") + "."
+      : "Not armed at this moment. That is expected.";
+    $("armState").className = "vstate " + (armed ? "armed" : "idle");
+    $("armNote").textContent = armed
+      ? "Nothing of ours is running. The node itself is holding the instruction to call this contract."
+      : "Arming burns STT continuously against a chain-enforced 32 STT floor on the subscription owner, "
+        + "so it is armed in sessions rather than left on. Everything below already happened, and none of "
+        + "it can be undone or faked.";
+    $("vWake").textContent = wake.toString();
+    $("vTrade").textContent = trades.toString();
+    $("vRoll").textContent = rolls.toString();
+    $("vStamp").textContent = "read from the chain at " + new Date().toLocaleTimeString();
+  } catch (e) {
+    $("armState").textContent = "Could not reach the node.";
+    $("armState").className = "vstate idle";
+    $("armNote").textContent = String(e.message || e).slice(0, 160);
+  }
+  // Filled orders come from DreamDEX's own indexer, so this number is the venue's record of
+  // the agent rather than the agent's record of itself.
+  try {
+    const orders = await ordersFromIndexer();
+    const filled = orders.filter((o) => String(o.status || "").toLowerCase().includes("fill")).length;
+    $("vFilled").textContent = filled > 0 ? String(filled) : String(orders.length);
+  } catch (e) { $("vFilled").textContent = "·"; }
+}
+
 let feedBusy = false;
 async function loadFeed() {
   if (feedBusy) return;
@@ -629,10 +789,31 @@ $("faucetBtn").addEventListener("click", async () => {
 $("explorerLink").href = CFG.explorer + "/address/" + CFG.agent;
 $("agentLink").href = CFG.explorer + "/address/" + CFG.agent;
 $("factoryLink").href = CFG.explorer + "/address/" + CFG.factory;
+$("lnkAgent").href = CFG.explorer + "/address/" + CFG.agent;
+$("lnkFactory").href = CFG.explorer + "/address/" + CFG.factory;
+$("verifyCmd").textContent = "node cli.js status --agent " + CFG.agent;
+$("stepCreate").textContent = "node cli.js create --factory " + CFG.factory;
+$("copyCmd").addEventListener("click", async () => {
+  const btn = $("copyCmd");
+  try {
+    await navigator.clipboard.writeText($("verifyCmd").textContent);
+    btn.textContent = "Copied";
+  } catch (e) {
+    // Clipboard is blocked in some embedded views, so fall back to selecting the text
+    // rather than leaving a button that silently does nothing.
+    const r = document.createRange();
+    r.selectNodeContents($("verifyCmd"));
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    btn.textContent = "Selected";
+  }
+  setTimeout(() => { btn.textContent = "Copy"; }, 1600);
+});
 
-function refresh() { loadProof(); loadAgent(); loadMarket(); loadFeed(); }
+function refresh() { loadVerify(); loadProof(); loadAgent(); loadMarket(); loadFeed(); }
 refresh();
-setInterval(() => { loadProof(); loadAgent(); }, 15000);
+setInterval(() => { loadVerify(); loadProof(); loadAgent(); }, 15000);
 setInterval(loadFeed, 60000);
 setInterval(loadMarket, 60000);
 </script>

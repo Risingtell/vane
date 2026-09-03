@@ -7,7 +7,12 @@ Everything below exists to let you check that yourself rather than take our word
 
 ---
 
-## 1. The claim, in one command (30 seconds, no install)
+## 1. Is it armed right now? (30 seconds, no install)
+
+> **An empty result here is not the failure condition.** Step 1 answers "is it armed today".
+> Step 2 answers "has the chain ever driven it", which is the permanent record and the actual
+> claim. If step 1 comes back empty, keep going.
+
 
 Two ways to check it, and they answer different questions. **Is it armed right now?** is a
 question about today. **Did the chain ever drive it?** is a permanent record in contract state,
@@ -57,7 +62,8 @@ cd vane/sdk && npm install ethers
 node cli.js status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
 ```
 
-Expected output, read live from the chain:
+Expected output. This is a real capture, and **the counters only ever go up**, so the numbers you
+see will be equal or higher. Nothing here can be reset or faked:
 
 ```
 agent            0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
@@ -66,25 +72,35 @@ operator         0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 tradingEnabled   true
 activePool       0x2AA87ab604568374Bbe98CaF308273cc0Dd7085a
 activePoolExpiry 1788427200
-windowSecondsLeft 201
+windowSecondsLeft -6394
+windowState      ended, the agent takes a new window on its next armed session
 rollsForward     true
 rollVenueId      0x679795a0195a1b76cdebb7c51d74e058aee92919b8c3389af86ef24535e8a28c
 minWindowSeconds 240
 orderPool        0x246a65643ad8b6C6Dbd0b017A259DA07681242FD
 maxPerWindow     10.0
 reserve          50.0
-freeCollateral   219.58136
-wakeCount        48
-tradeCount       12
+freeCollateral   203.960776
+wakeCount        52
+tradeCount       14
 reclaimCount     0
 redeemCount      0
 rollCount        2
 trackedOrders    4
 ```
 
-`rollCount` is the one to look at. It counts windows the agent picked out of a `MarketCreated`
-event and moved onto by itself. `activePool` is wherever that left it, and `windowSecondsLeft`
-counts down to the end of that window. Nobody chose that pool.
+**`rollCount` is the one to look at.** It counts windows the agent picked out of a `MarketCreated`
+event and moved onto by itself. Nobody chose those pools.
+
+Two readings that are **not** failures, and are the two most likely to mislead you:
+
+- **`windowSecondsLeft` is negative.** That means the last armed session ended and the window the
+  agent was on has since closed. `windowState` says so in words. It takes a new window on its next
+  armed session; it does not need fixing.
+- **`trackedOrders` is not zero while `reclaimCount` is zero.** Escrow is released by a scheduled
+  housekeeping wake or by anyone calling `reclaimExpired`, and the default order type is
+  immediate-or-cancel, so an unfilled remainder is cancelled by the venue rather than left
+  resting. The filled portion is a position, not stranded money.
 
 | Field | Means |
 |---|---|
@@ -139,7 +155,7 @@ npm install
 npx hardhat test
 ```
 
-Expect **55 passing**. The tests are named after the claims they defend. The ones worth
+Expect **75 passing**. The tests are named after the claims they defend. The ones worth
 reading first:
 
 - `lets only the owner withdraw`
@@ -147,9 +163,21 @@ reading first:
 - `never lets the operator move collateral out`
 - `refuses to be woken by anyone other than the precompile`
 - `is permissionless, so funds are not stranded if the operator vanishes`
-- `does NOT forget orders when nothing had expired yet`
 - `claims BOTH sides of a voided market`
 - `reclaims and redeems instead of trading` (the scheduled housekeeping wake)
+
+And, for the part that moves it between windows on its own:
+
+- `moves onto a window the chain has just opened, with nobody in the loop`
+- `ignores the pricefeed test markets, which differ ONLY by venue`
+- `stays put while its own window is open, however long the new one is`
+- `clamps its order to the end of the window it just moved onto`
+- `would be rejected by the venue without that clamp` (so the test above cannot pass vacuously)
+- `still reclaims from the OLD book after moving on`
+
+**If you are on Windows and PowerShell refuses to run `npm`**, that is the default execution
+policy blocking `npm.ps1`, not a problem with this repo. Use `npm.cmd install` and
+`npx.cmd hardhat test`, or run the commands from Git Bash.
 
 ---
 

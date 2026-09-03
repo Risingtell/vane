@@ -174,11 +174,19 @@ export async function status(agentAddress, rpc = SHANNON.rpc) {
       a.openOrderCount(), t.balanceOf(agentAddress),
     ]);
   const secondsLeft = expiry === 0n ? null : Number(expiry) - Math.floor(Date.now() / 1000);
+  // A negative number here is truthful but reads as a fault. Say what it means instead: the
+  // agent is between armed sessions, and the window it was last on has since closed.
+  const windowState = expiry === 0n
+    ? "unknown, this pool was chosen by hand"
+    : secondsLeft > 0
+      ? "open"
+      : "ended, the agent takes a new window on its next armed session";
   return {
     agent: agentAddress, owner, operator, tradingEnabled: trading, activePool: pool,
     // Set only when the agent moved itself here, since that is the path that learns it.
     activePoolExpiry: expiry === 0n ? null : Number(expiry),
     windowSecondsLeft: secondsLeft,
+    windowState,
     rollsForward: venue !== ZeroHash,
     rollVenueId: venue, minWindowSeconds: Number(minWindow),
     // The book the tracked orders are resting in, which is not always the active one.
