@@ -71,9 +71,9 @@ agent            0xb1341FE72F6f0d77168faD310336847686f8A852
 owner            0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 operator         0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 tradingEnabled   true
-activePool       0xeA06fBD85e4666384180BD492Cd266df8467622a
-activePoolExpiry 1788810900
-windowSecondsLeft 24
+activePool       0x0A8Fcc65BcCd44BaCD119DEA3E141C1bED6A4bB4
+activePoolExpiry 1788817200
+windowSecondsLeft 181
 windowState      open
 rollsForward     true
 rollVenueId      0x679795a0195a1b76cdebb7c51d74e058aee92919b8c3389af86ef24535e8a28c
@@ -81,12 +81,12 @@ minWindowSeconds 240
 orderPool        0x1Fdf23d867fa753C4dF87BE1Af391Dd46b263A2B
 maxPerWindow     10.0
 reserve          50.0
-freeCollateral   290.85
-wakeCount        40
-tradeCount       1
+freeCollateral   204.726268
+wakeCount        656
+tradeCount       21
 reclaimCount     0
 redeemCount      0
-rollCount        1
+rollCount        20
 trackedOrders    1
 ```
 
