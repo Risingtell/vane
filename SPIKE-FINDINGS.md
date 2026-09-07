@@ -480,3 +480,33 @@ The indexer returns **114 different markets sharing the single pool address** th
 onto. DreamDEX recycles pool contracts across windows continuously, which is why redemption is
 keyed by market id and never by pool, and why an agent has to carry the window's expiry itself
 rather than ask the pool what it is trading.
+
+## A third error selector: `ImmediateOrCancelNoFill()`, `0xd48c4403`
+
+Found the same way as the other two, by simulating the exact call with `eth_call` and hashing the
+selector against the markets SDK's `contractErrorsAbi`.
+
+The agent's default order type is immediate-or-cancel, which is deliberate: a resting bid that
+never fills leaves no position to settle and nothing to redeem, and its collateral sits locked
+until something cancels it. The cost of that choice is this error. **A window that has just opened
+often has an empty book, and an IOC order into an empty book does not quietly do nothing, it
+reverts.**
+
+So an agent that moves itself onto brand new windows will meet this regularly, and the two errors
+look identical from outside: both are custom errors with no reason string, and both surface as an
+ordinary rejected order. They mean opposite things. `OrderExpiryBeyondMarket` is the agent's fault
+and is fixable in code. `ImmediateOrCancelNoFill` is the market being empty and is not a fault at
+all.
+
+Worth knowing before you conclude your agent is broken:
+
+| Selector | Error | Whose problem |
+|---|---|---|
+| `0xd3dea628` | `OrderExpiryBeyondMarket()` | yours, clamp the order to the window |
+| `0xd48c4403` | `ImmediateOrCancelNoFill()` | nobody's, the book is empty right now |
+
+The protocol does give an answer for the empty-book case, and this agent already carries it:
+`mintSet` creates a complete YES and NO pair straight from collateral with no counterparty at all,
+which is the only way to take a position on a book nobody is quoting. Wiring that in as an
+automatic fallback when an IOC order finds no fill is the obvious next step and is noted in the
+README as future work rather than claimed as done.

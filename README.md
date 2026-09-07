@@ -236,6 +236,12 @@ an ESM SDK with a CLI. Contract interfaces were derived from the shipped
   short windows rather than holding out for a rare long one, so a missed event costs minutes, not
   the session. Full measurement in `SPIKE-FINDINGS.md`.
 - **Positions are valued at book cost.** There is no mark-to-market of an open position.
+- **A brand new window often has an empty book, and the agent does not yet work around it.** Its
+  orders are immediate-or-cancel, so an order into a book nobody is quoting reverts with
+  `ImmediateOrCancelNoFill()` rather than resting. The protocol's answer is `mintSet`, which
+  creates a complete YES and NO pair from collateral with no counterparty, and this contract
+  already has it as `mintPositions`. Calling it automatically when an IOC order finds no fill is
+  the obvious next step and is not claimed as done.
 - **Order ids are tracked for one book at a time.** If the agent moves to a new window while
   orders it placed are still tracked against the previous one, orders on the new book are not
   added to the reclaim list until the old ones clear. In the shipped configuration this is close

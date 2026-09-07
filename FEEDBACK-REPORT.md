@@ -100,7 +100,17 @@ of the revert data, and hashing the SDK's `contractErrorsAbi` against it.
 **Suggested fix:** mention in the order-placement docs that expiry is bounded by the market, and
 ideally include the error selectors in the docs so a revert can be read without this detour.
 
-## 5. Two smaller ones
+## 5. Two custom errors mean opposite things and look identical
+
+Related to the point above. An agent trading fresh windows meets **`ImmediateOrCancelNoFill()`**,
+selector `0xd48c4403`, whenever the book is still empty. Like `OrderExpiryBeyondMarket` it is a
+custom error with no reason string, so from outside the two are indistinguishable, and they mean
+opposite things: one is the agent's bug, the other is simply nobody quoting yet.
+
+**Suggested fix:** publish the error selectors in the developer docs. A short table of selector to
+error name would turn both of these from an afternoon of guesswork into a lookup.
+
+## 6. Two smaller ones
 
 **A subscription owner must hold at least 32 STT, and below it `subscribe` reverts with empty
 revert data.** 31 fails, 32 passes, and there is nothing to decode and nothing pointing at a
@@ -111,7 +121,7 @@ therefore reaches back barely over a minute, and a poller on any sane interval *
 truncates** rather than erroring. Anything that must survive being read later belongs in contract
 state or in the indexer.
 
-## 6. One thing that is genuinely good
+## 7. One thing that is genuinely good
 
 The reactivity precompile is the most interesting primitive we have built on this year. A
 subscription stored in chain state that invokes a contract is a real answer to the keeper problem,
