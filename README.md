@@ -14,8 +14,8 @@ Built for the Somnia x DreamDEX Event Contracts Hackathon.
 | **Live console** | https://vane-console.vercel.app |
 | **Demo video** | (added at submission) |
 | **Network** | Somnia Shannon testnet, chain 50312 |
-| **Agent** | [`0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B`](https://shannon-explorer.somnia.network/address/0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B) |
-| **Factory** | [`0x5CBe8710c2cFf0E8CeFdAb7e5080F4B5faF7De5D`](https://shannon-explorer.somnia.network/address/0x5CBe8710c2cFf0E8CeFdAb7e5080F4B5faF7De5D) |
+| **Agent** | [`0xb1341FE72F6f0d77168faD310336847686f8A852`](https://shannon-explorer.somnia.network/address/0xb1341FE72F6f0d77168faD310336847686f8A852) |
+| **Factory** | [`0x7b0e95BeE84eba85f0AB975a6785F84CA6F3D41F`](https://shannon-explorer.somnia.network/address/0x7b0e95BeE84eba85f0AB975a6785F84CA6F3D41F) |
 | **Tests** | `77` passing, contracts and TypeScript both clean |
 | **SDK / CLI** | `sdk/`, an ESM SDK plus a `vane` command |
 
@@ -24,7 +24,7 @@ Every number above can be re-derived by anyone, from the chain, in one command:
 ```bash
 git clone https://github.com/Risingtell/vane.git
 cd vane/sdk && npm install ethers
-node cli.js status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
+node cli.js status --agent 0xb1341FE72F6f0d77168faD310336847686f8A852
 ```
 
 ## Why this is not another trading bot
@@ -60,7 +60,7 @@ Then read what it has done, straight from contract state:
 ```bash
 git clone https://github.com/Risingtell/vane.git
 cd vane/sdk && npm install ethers
-node cli.js status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
+node cli.js status --agent 0xb1341FE72F6f0d77168faD310336847686f8A852
 ```
 
 `JUDGE-QUICKSTART.md` is the five-minute version, with the exact output to expect at each step.
@@ -171,7 +171,7 @@ To run an agent of your own on Shannon:
 cd sdk && npm link            # provides the `vane` command
 export PRIVATE_KEY=0x...      # a throwaway testnet key, never one holding real funds
 vane faucet                   # 10,000 test tUSDC
-vane create --factory 0x5CBe8710c2cFf0E8CeFdAb7e5080F4B5faF7De5D
+vane create --factory 0x7b0e95BeE84eba85f0AB975a6785F84CA6F3D41F
 vane fund   --agent 0x... --amount 100
 ```
 

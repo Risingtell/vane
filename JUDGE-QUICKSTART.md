@@ -42,7 +42,7 @@ Check three fields:
 
 | Field | Expected | Why it matters |
 |---|---|---|
-| `handler_contract_address` | `0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B` | the chain calls our agent |
+| `handler_contract_address` | `0xb1341FE72F6f0d77168faD310336847686f8A852` | the chain calls our agent |
 | `handler_function_selector` | `0x53edf33d` | that is `onEvent(address,bytes32[],bytes)` |
 | `emitter` | `0x3ecC694Cef705358864a646142ac17A90E29e388` | DreamDEX BinaryMarketsModule |
 
@@ -59,7 +59,7 @@ database of ours.
 ```bash
 git clone https://github.com/Risingtell/vane.git
 cd vane/sdk && npm install ethers
-node cli.js status --agent 0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
+node cli.js status --agent 0xb1341FE72F6f0d77168faD310336847686f8A852
 ```
 
 Expected output. This is a real capture, read from the chain on **3 September 2026**, and **the
@@ -67,7 +67,7 @@ counters only ever go up**, so the numbers you see will be equal or higher. Noth
 reset or faked:
 
 ```
-agent            0x8779a3987637Ba5DE3E802D6BBA7F7dD5cd9c92B
+agent            0xb1341FE72F6f0d77168faD310336847686f8A852
 owner            0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 operator         0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 tradingEnabled   true
@@ -124,7 +124,7 @@ Independent of our contract, straight from the Somnia Markets indexer:
 ```bash
 curl -s -X POST https://dev.smk.somnia.host/v1/graphql \
   -H 'content-type: application/json' \
-  -d '{"query":"query { Order(where: {owner: {_eq: \"0x8779a3987637ba5de3e802d6bba7f7dd5cd9c92b\"}}) { orderId status price fullQuantity rested } }"}'
+  -d '{"query":"query { Order(where: {owner: {_eq: \"0xb1341fe72f6f0d77168fad310336847686f8a852\"}}) { orderId status price fullQuantity rested } }"}'
 ```
 
 These are real orders in DreamDEX's own order history, owned by the agent contract rather than by
