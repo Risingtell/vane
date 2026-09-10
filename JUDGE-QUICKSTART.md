@@ -62,7 +62,7 @@ cd vane/sdk && npm install ethers
 node cli.js status --agent 0xb1341FE72F6f0d77168faD310336847686f8A852
 ```
 
-Expected output. This is a real capture, read from the chain on **10 September 2026**, and **the
+Expected output. This is a real capture, read from the chain on **11 September 2026**, and **the
 counters only ever go up**, so the numbers you see will be equal or higher. Nothing here can be
 reset or faked:
 
@@ -71,9 +71,9 @@ agent            0xb1341FE72F6f0d77168faD310336847686f8A852
 owner            0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 operator         0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 tradingEnabled   true
-activePool       0x180bB75bF895515C8d90fF512715d0B86AA55fBe
-activePoolExpiry 1789049400
-windowSecondsLeft 153
+activePool       0x69E62A394Ee036FfDc867E2C7d689D5B65144a80
+activePoolExpiry 1789081800
+windowSecondsLeft 227
 windowState      open
 rollsForward     true
 rollVenueId      0x679795a0195a1b76cdebb7c51d74e058aee92919b8c3389af86ef24535e8a28c
@@ -82,11 +82,11 @@ orderPool        0x1Fdf23d867fa753C4dF87BE1Af391Dd46b263A2B
 maxPerWindow     10.0
 reserve          50.0
 freeCollateral   50.000693
-wakeCount        19936
+wakeCount        23150
 tradeCount       114
 reclaimCount     0
 redeemCount      0
-rollCount        604
+rollCount        708
 trackedOrders    1
 ```
 
@@ -130,8 +130,9 @@ curl -s -X POST https://dev.smk.somnia.host/v1/graphql \
 These are real orders in DreamDEX's own order history, owned by the agent contract rather than by
 a bot or by anyone's wallet.
 
-Expect every one of them to read `status: Filled` and `rested: false`. At the last check that was
-**14 of 14**. That is the design rather than a fault: the default order type is
+Expect almost all of them to read `status: Filled`, and **`rested: false` on every single one**.
+At the last check that was 63 Filled and 4 Closed, none resting. That is the design rather than a
+fault: the default order type is
 immediate-or-cancel, so an order crosses and fills and the venue cancels any unfilled remainder
 instead of leaving it on the book. A resting bid that never fills leaves no position to settle and
 nothing to redeem, and its collateral sits locked until something cancels it.
