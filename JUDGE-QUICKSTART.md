@@ -62,7 +62,7 @@ cd vane/sdk && npm install ethers
 node cli.js status --agent 0xb1341FE72F6f0d77168faD310336847686f8A852
 ```
 
-Expected output. This is a real capture, read from the chain on **7 September 2026**, and **the
+Expected output. This is a real capture, read from the chain on **10 September 2026**, and **the
 counters only ever go up**, so the numbers you see will be equal or higher. Nothing here can be
 reset or faked:
 
@@ -71,9 +71,9 @@ agent            0xb1341FE72F6f0d77168faD310336847686f8A852
 owner            0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 operator         0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 tradingEnabled   true
-activePool       0x0A8Fcc65BcCd44BaCD119DEA3E141C1bED6A4bB4
-activePoolExpiry 1788817200
-windowSecondsLeft 181
+activePool       0x180bB75bF895515C8d90fF512715d0B86AA55fBe
+activePoolExpiry 1789049400
+windowSecondsLeft 153
 windowState      open
 rollsForward     true
 rollVenueId      0x679795a0195a1b76cdebb7c51d74e058aee92919b8c3389af86ef24535e8a28c
@@ -81,12 +81,12 @@ minWindowSeconds 240
 orderPool        0x1Fdf23d867fa753C4dF87BE1Af391Dd46b263A2B
 maxPerWindow     10.0
 reserve          50.0
-freeCollateral   204.726268
-wakeCount        656
-tradeCount       21
+freeCollateral   50.000693
+wakeCount        19936
+tradeCount       114
 reclaimCount     0
 redeemCount      0
-rollCount        20
+rollCount        604
 trackedOrders    1
 ```
 
