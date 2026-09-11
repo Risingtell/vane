@@ -4,28 +4,32 @@ Run an on-chain trading agent for DreamDEX event contracts on Somnia. No server,
 and no keeper: the chain itself wakes the agent.
 
 ```bash
+npm install vane-agent ethers
+```
+
+`ethers` v6 is a peer dependency. Node 20 or newer. Or clone the repo and run it from source:
+
+```bash
 git clone https://github.com/Risingtell/vane.git
 cd vane/sdk && npm install ethers
 ```
 
-`ethers` v6 is a peer dependency. Node 20 or newer.
-
 ## CLI
 
 ```bash
-node cli.js markets                          # windows open right now
-node cli.js status --agent 0x..              # everything an agent has done
-node cli.js subs   --owner 0x..              # what the node is holding for an account
+npx vane-agent markets                          # windows open right now
+npx vane-agent status --agent 0x..              # everything an agent has done
+npx vane-agent subs   --owner 0x..              # what the node is holding for an account
 
-node cli.js faucet                           # claim 10,000 test tUSDC
-node cli.js create --factory 0x..            # deploy your own agent
-node cli.js fund   --agent 0x.. --amount 100
+npx vane-agent faucet                           # claim 10,000 test tUSDC
+npx vane-agent create --factory 0x..            # deploy your own agent
+npx vane-agent fund   --agent 0x.. --amount 100
 
-node cli.js arm    --agent 0x..              # hand it to the chain (both topics)
-node cli.js disarm                           # take it back, and stop spending STT
+npx vane-agent arm    --agent 0x..              # hand it to the chain (both topics)
+npx vane-agent disarm                           # take it back, and stop spending STT
 
-node cli.js reclaim --agent 0x.. --pool 0x..
-node cli.js sweep   --agent 0x.. --market-id 0x.. --market 0x..
+npx vane-agent reclaim --agent 0x.. --pool 0x..
+npx vane-agent sweep   --agent 0x.. --market-id 0x.. --market 0x..
 ```
 
 Reads need nothing. Writes need `PRIVATE_KEY` in the environment, and it should be a throwaway
@@ -34,7 +38,7 @@ testnet key.
 ## Library
 
 ```js
-import { status, subscriptions, arm, disarm, liveMarkets } from "./index.js";
+import { status, subscriptions, arm, disarm, liveMarkets } from "vane-agent";
 
 // What the NODE is holding. This is the proof nothing local is running.
 const ids = await subscriptions("0xYourOperator");
