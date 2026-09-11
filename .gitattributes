@@ -1,0 +1,8 @@
+# Default: let git decide, and store text as LF.
+* text=auto
+
+# cli.js is executed directly through the package's `bin` entry, so its shebang
+# line must end in LF. A CRLF here makes the kernel look for an interpreter
+# called "node\r", and the command fails on macOS and Linux with a confusing
+# "bad interpreter" error. Windows checkouts of this one file stay LF on purpose.
+sdk/cli.js text eol=lf
