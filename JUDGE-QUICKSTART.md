@@ -62,7 +62,7 @@ cd vane/sdk && npm install ethers
 node cli.js status --agent 0xb1341FE72F6f0d77168faD310336847686f8A852
 ```
 
-Expected output. This is a real capture, read from the chain on **11 September 2026**, and **the
+Expected output. This is a real capture, read from the chain on **14 September 2026**, and **the
 counters only ever go up**, so the numbers you see will be equal or higher. Nothing here can be
 reset or faked:
 
@@ -71,9 +71,9 @@ agent            0xb1341FE72F6f0d77168faD310336847686f8A852
 owner            0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 operator         0x5018Ce8efCA43Ca361Cc413d3b63d9ACF8726053
 tradingEnabled   true
-activePool       0x69E62A394Ee036FfDc867E2C7d689D5B65144a80
-activePoolExpiry 1789081800
-windowSecondsLeft 227
+activePool       0x13b95A6E9e1eCE74FA570937C46B349f91FeA3FE
+activePoolExpiry 1789372800
+windowSecondsLeft 78
 windowState      open
 rollsForward     true
 rollVenueId      0x679795a0195a1b76cdebb7c51d74e058aee92919b8c3389af86ef24535e8a28c
@@ -81,12 +81,12 @@ minWindowSeconds 240
 orderPool        0x1Fdf23d867fa753C4dF87BE1Af391Dd46b263A2B
 maxPerWindow     10.0
 reserve          50.0
-freeCollateral   50.000693
-wakeCount        23150
+freeCollateral   405.366693
+wakeCount        39424
 tradeCount       114
 reclaimCount     0
-redeemCount      0
-rollCount        708
+redeemCount      8
+rollCount        1576
 trackedOrders    1
 ```
 
@@ -98,6 +98,11 @@ Two readings that are **not** failures, and are the two most likely to mislead y
 - **`windowSecondsLeft` is negative.** That means the last armed session ended and the window the
   agent was on has since closed. `windowState` says so in words. It takes a new window on its next
   armed session; it does not need fixing.
+- **`reclaimCount` is zero while `redeemCount` is not.** Those two are the same pillar reached by
+  different routes, and only one of them has had work to do on this agent. Redemption has run
+  eight times here, recovering real collateral from settled markets. Reclaim has had nothing to
+  free, for the reason in the next bullet. It is proven on earlier agents, and the full run is in
+  `SPIKE-FINDINGS.md` under Day 3.
 - **`trackedOrders` is not zero while `reclaimCount` is zero.** Escrow is released by a scheduled
   housekeeping wake or by anyone calling `reclaimExpired`, and the default order type is
   immediate-or-cancel, so an unfilled remainder is cancelled by the venue rather than left

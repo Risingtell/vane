@@ -349,11 +349,11 @@ the dynamic `asset`, `question` and `context`:
 So the whole decision is three `abi.decode` calls over calldata slices. No dynamic decoding, no
 stack-too-deep, no `viaIR`.
 
-## ⚠ The venue is the ONLY thing that separates real markets from test ones
+## ⚠ Venue and operator are what separate real markets from test ones
 
 DreamDEX emits **"Pricefeed test"** markets from the same module, in the same bursts, in the same
 transactions as the real ones. Measured live on Shannon, they are identical in every field an
-agent would naturally filter on:
+agent would *naturally* reach for:
 
 | | Real DreamDEX | Pricefeed test |
 |---|---|---|
@@ -363,11 +363,17 @@ agent would naturally filter on:
 | **`operatorId`** | **2** | **4** |
 | **`venueId`** | **`0x679795a0…35e8a28c`** | **`0x1a1e6821…8a5a050f`** |
 
-An agent that filtered on `marketType` or on the collateral would happily trade the test markets.
-The bot kit's own `packages/ec-core/src/markets.ts` says the same thing, and warns against
-inferring the venue from the deployment manifest because the manifest's "active" venue disagrees
-with where the live markets actually are. Reading the venue out of the event itself avoids both
-problems.
+An agent that filtered on `marketType`, on `outcomeSlotCount` or on the collateral would happily
+trade the test markets. **Two fields do discriminate, `operatorId` and `venueId`, and Vane filters
+on the venue.** That is a deliberate choice rather than the only option: the venue id is the
+scoping key the protocol itself uses, the bot kit's own `packages/ec-core/src/markets.ts` treats it
+as the way to scope "via DreamDEX", and an operator can in principle run more than one venue.
+`operatorId` happened to separate the two cleanly in every sample measured here, but it is the
+weaker key of the two and this repo does not claim to have tested it across every real market.
+
+The same file also warns against inferring the venue from the deployment manifest, because the
+manifest's "active" venue disagrees with where the live markets actually are. Reading the venue out
+of the event itself avoids both problems.
 
 ## Windows come in a ladder, so a length floor is not optional
 
@@ -384,7 +390,8 @@ Measured from the indexer over 24 hours on the DreamDEX venue:
 They all run **side by side** on the same two questions. So "the newest window" is a useless
 target: an agent taking whatever arrived last would keep landing on 5-minute books that close
 before its own 300-second orders can be reclaimed. Vane takes nothing under `minWindowSeconds`
-(600 by default) and, crucially, **only looks for a window when its current one is nearly done**.
+(240 by default, see the delivery-rate finding below for why it is that low) and, crucially,
+**only looks for a window when its current one is nearly done**.
 Without that second half it would abandon a book it was trading every time the venue opened
 anything longer, and end up parked on the daily window.
 

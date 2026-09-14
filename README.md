@@ -17,7 +17,7 @@ Built for the Somnia x DreamDEX Event Contracts Hackathon.
 | **Agent** | [`0xb1341FE72F6f0d77168faD310336847686f8A852`](https://shannon-explorer.somnia.network/address/0xb1341FE72F6f0d77168faD310336847686f8A852) |
 | **Factory** | [`0x7b0e95BeE84eba85f0AB975a6785F84CA6F3D41F`](https://shannon-explorer.somnia.network/address/0x7b0e95BeE84eba85f0AB975a6785F84CA6F3D41F) |
 | **Tests** | `77` passing, contracts and TypeScript both clean |
-| **On chain so far** | woken `23,134` times, **`707` windows it chose itself**, `114` orders placed |
+| **On chain so far** | woken `39,424` times, **`1,576` windows it chose itself**, `114` orders, `8` settled positions redeemed |
 | **SDK / CLI** | `sdk/`, an ESM SDK plus a `vane` command |
 
 Every number above can be re-derived by anyone, from the chain, in one command:
@@ -49,6 +49,11 @@ with when a window rolls. Vane removes that layer rather than hiding it.
 
 Ask the node what it is holding. If the chain has a subscription naming the agent as its
 handler, then nothing of ours needs to be running for the agent to act:
+
+> **An empty `[]` here is not the failure condition.** This command answers "is it armed today",
+> and arming burns STT against a chain-enforced floor, so it runs in sessions. The permanent
+> record is the second command below, which works whether or not anything is armed right now.
+> Keep going.
 
 ```bash
 curl -s -X POST https://dream-rpc.somnia.network \
@@ -99,8 +104,7 @@ All enforced on-chain before an order goes out.
 **4. It moves itself onto the next window.** A second subscription wakes it on DreamDEX's
 `MarketCreated`. The new pool arrives as an indexed topic, and the venue, collateral and expiry
 sit in fixed slots at the head of the event data, so the agent judges a window and takes it
-without any off-chain help. It holds a book until under ten minutes are left, then takes the next
-one the venue opens.
+without any off-chain help. It holds a book until that window ends, then takes the next one the venue opens.
 
 **5. It gets the money back.** A scheduled one-shot wake, told apart from a market wake by its
 topic, releases escrow from expired orders and redeems anything that settled. Escrow is tracked
@@ -226,7 +230,7 @@ an ESM SDK with a CLI. Contract interfaces were derived from the shipped
 - **Arming costs STT continuously, and that is the real limit on this design.** With both
   subscriptions live the agent is woken about 4 times a minute at roughly 0.002 STT a wake, which
   measured out at **8 to 25 STT a day** depending on how much of that is trading rather than
-  standing down. With a chain-enforced 32 STT floor under the subscription owner, a 45 STT balance
+  standing down. With a chain-enforced 32 STT floor under the subscription owner, a 44 STT balance
   buys well under a day of continuous arming, and a Shannon faucet grant is about 1 STT. So the
   subscription is armed in sessions rather than left on, and the console will often show no live
   subscription while still showing everything the agent did while it was armed. Keeping one armed

@@ -62,7 +62,7 @@ What worked was `npm pack @somnia-chain/markets-sdk`, then hashing every event i
 **Suggested fix:** verify the implementation contract, or publish a topics table in the docs. A
 one-page list of topic0 to signature would remove this entirely.
 
-## 3. The venue id is the only thing separating real markets from test ones
+## 3. Only the venue and operator ids separate real markets from test ones
 
 `MarketCreated` fires for **"Pricefeed test"** markets from the same module, in the same bursts,
 in the same transactions as real ones. Measured live, they are identical in every field an agent
@@ -76,7 +76,9 @@ would naturally filter on:
 | **`operatorId`** | **2** | **4** |
 | **`venueId`** | **`0x679795a0…35e8a28c`** | **`0x1a1e6821…8a5a050f`** |
 
-An agent filtering on market type or on the collateral trades the test markets and never notices.
+An agent filtering on market type, outcome count or collateral trades the test markets and never
+notices. Two fields do discriminate, `operatorId` and `venueId`, and we filter on the venue because
+it is the scoping key the protocol itself uses.
 The bot kit's `packages/ec-core/src/markets.ts` does warn that the venue is the scoping key, and
 that the deployment manifest's "active" venue disagrees with where live markets are, but that
 warning is in a source comment rather than in the docs.
