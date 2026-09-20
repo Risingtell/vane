@@ -17,7 +17,8 @@ Built for the Somnia x DreamDEX Event Contracts Hackathon.
 | **Agent** | [`0xb1341FE72F6f0d77168faD310336847686f8A852`](https://shannon-explorer.somnia.network/address/0xb1341FE72F6f0d77168faD310336847686f8A852) |
 | **Factory** | [`0x7b0e95BeE84eba85f0AB975a6785F84CA6F3D41F`](https://shannon-explorer.somnia.network/address/0x7b0e95BeE84eba85f0AB975a6785F84CA6F3D41F) |
 | **Tests** | `77` passing, contracts and TypeScript both clean |
-| **On chain so far** | woken `39,424` times, **`1,576` windows it chose itself**, `114` orders, `8` settled positions redeemed |
+| **On chain so far** | woken `50,928` times, **`3,284` windows it chose itself**, `251` orders, `8` settled positions redeemed (read 20 Sep 2026; the [console](https://vane-console.vercel.app) reads them live) |
+| **Since judging closed** | armed continuously since 11 Sep 2026 20:00 UTC. In the nine days after the deadline the chain woke it `20,854` more times and it moved itself onto `2,368` more windows, with no process of ours running. The console reads the counters at the closing block and again now, so the difference is the node's own record |
 | **SDK / CLI** | `sdk/`, an ESM SDK plus a `vane` command |
 
 Every number above can be re-derived by anyone, from the chain, in one command:

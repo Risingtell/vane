@@ -124,6 +124,34 @@
   .proofline{font-size:clamp(18px,2.3vw,26px);font-weight:700;letter-spacing:-.01em}
   .mono{font-family:var(--mono)}
 
+  /* ---- since close ---- */
+  .since{margin-top:8px;color:var(--muted);font-size:14px;max-width:74ch}
+  .since b{color:var(--text)}
+  .delta{font-family:var(--mono);font-size:clamp(28px,3.4vw,44px);margin-top:9px;line-height:1.1;
+    letter-spacing:-.02em;color:var(--signal)}
+  .delta small{font-size:.5em;color:var(--dim);letter-spacing:0}
+  .charts{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);margin-top:30px;position:relative;
+    grid-template-columns:repeat(3,1fr)}
+  .chart{background:var(--ink2);padding:20px 22px 16px;position:relative}
+  .chart .k{margin-bottom:2px}
+  .chart .lead{font-family:var(--mono);font-size:22px;margin:6px 0 10px;color:var(--text)}
+  .chart .lead small{font-size:12px;color:var(--dim);margin-left:8px}
+  .chart svg{display:block;width:100%;height:120px;overflow:visible}
+  .chart .bar{fill:var(--signal);opacity:.82;transition:opacity .12s}
+  .chart .bar.today{opacity:.45}
+  .chart .bar.dim{opacity:.38}
+  .chart .bar:hover{opacity:1}
+  .chart .axis{stroke:var(--line2);stroke-width:1}
+  .chart .closeline{stroke:var(--text);stroke-width:1;stroke-dasharray:3 3;opacity:.55}
+  .chart .lbl{font-family:var(--mono);font-size:10px;fill:var(--dim);letter-spacing:.06em}
+  .chart .lbl.hi{fill:var(--muted)}
+  .tip{position:absolute;pointer-events:none;background:var(--ink);border:1px solid var(--line2);
+    color:var(--text);font-family:var(--mono);font-size:11px;padding:6px 9px;white-space:nowrap;
+    transform:translate(-50%,-110%);display:none;z-index:2}
+  .tip.on{display:block}
+  .chartnote{margin-top:14px;color:var(--dim);font-size:12.5px;max-width:80ch}
+  @media(max-width:900px){ .charts{grid-template-columns:1fr} }
+
   /* ---- table ---- */
   .tablewrap{overflow-x:auto;margin-top:26px;border:1px solid var(--line)}
   table{border-collapse:collapse;width:100%;min-width:640px;font-family:var(--mono);font-size:13px}
@@ -214,6 +242,7 @@
       <p class="vnote" id="armNote">
         Asking the node whether it is holding a standing instruction for this agent.
       </p>
+      <p class="vnote" id="armSince" hidden></p>
       <div class="vgrid">
         <div class="vcell"><div class="k">Times the chain woke it</div><div class="v" id="vWake">&middot;</div></div>
         <div class="vcell"><div class="k">Orders placed</div><div class="v" id="vTrade">&middot;</div></div>
@@ -264,6 +293,47 @@
         <div class="cell"><div class="k">Windows it moved onto</div><div class="v" id="rollCount">&middot;</div>
           <div class="note">Chose them itself, from the event</div></div>
       </div>
+    </section>
+  </div>
+</div>
+
+<!-- What happened after everyone stopped touching it. This is the claim in one panel: the
+     counters at the close of judging are read from historical state at that block, so the
+     deltas are the chain's own record of the agent working with nobody around. -->
+<div class="band" id="since">
+  <div class="wrap">
+    <section>
+      <div class="eyebrow">Since judging closed</div>
+      <h2>Judging closed. The agent did not.</h2>
+      <p class="since" id="sinceLede">
+        Reading the counters as they stood when judging closed, then again now.
+      </p>
+
+      <div class="grid g4">
+        <div class="cell"><div class="k">Times woken since</div><div class="delta" id="dWake">&middot;</div>
+          <div class="note" id="dWakeNote"></div></div>
+        <div class="cell"><div class="k">Windows chosen since</div><div class="delta" id="dRoll">&middot;</div>
+          <div class="note" id="dRollNote"></div></div>
+        <div class="cell"><div class="k">Orders placed since</div><div class="delta" id="dTrade">&middot;</div>
+          <div class="note" id="dTradeNote"></div></div>
+        <div class="cell"><div class="k">Winnings redeemed since</div><div class="delta" id="dRedeem">&middot;</div>
+          <div class="note" id="dRedeemNote"></div></div>
+      </div>
+
+      <div class="charts" id="charts">
+        <div class="chart"><div class="k">Times woken, per day</div><div class="lead" id="cWakeLead"><small style="margin:0">reading historical state…</small></div>
+          <svg id="cWake" viewBox="0 0 320 120" preserveAspectRatio="none" role="img" aria-label="Times the chain woke the agent, per day"></svg></div>
+        <div class="chart"><div class="k">Windows chosen, per day</div><div class="lead" id="cRollLead"><small style="margin:0">reading historical state…</small></div>
+          <svg id="cRoll" viewBox="0 0 320 120" preserveAspectRatio="none" role="img" aria-label="Windows the agent moved itself onto, per day"></svg></div>
+        <div class="chart"><div class="k">Orders placed, per day</div><div class="lead" id="cTradeLead"><small style="margin:0">reading historical state…</small></div>
+          <svg id="cTrade" viewBox="0 0 320 120" preserveAspectRatio="none" role="img" aria-label="Orders the agent placed, per day"></svg></div>
+        <div class="tip" id="tip"></div>
+      </div>
+      <p class="chartnote" id="chartNote">
+        Each bar is the difference between two reads of contract state, one at midnight UTC and one
+        at the next, made against the node's historical state. The dashed line is the close of
+        judging. Only the reactivity precompile can move the first two counters.
+      </p>
     </section>
   </div>
 </div>
@@ -322,10 +392,10 @@
     <section>
       <div class="eyebrow">On-chain activity</div>
       <h2>Everything it has done</h2>
-      <p class="sub">Read straight from the chain: the agent's own events, and the orders it left on the DreamDEX book.</p>
+      <p class="sub">Read straight from the chain: the agent's own events over roughly the last two hours, newest first, and the orders it left on the DreamDEX book. Times are local to you.</p>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Event</th><th>Detail</th><th>Block</th></tr></thead>
+          <thead><tr><th>Event</th><th>Detail</th><th>When</th></tr></thead>
           <tbody id="feed"><tr><td colspan="3" style="color:var(--dim)">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -466,7 +536,7 @@ const AGENT_ABI = [
   "event WokenByChain(address emitter, uint256 blockNumber)",
   "event Traded(address indexed pool, uint8 kind, uint256 price, uint256 quantity, uint128 orderId)",
   "event TradeSkipped(address indexed pool, string reason)",
-  "event Reclaimed(address indexed pool, uint256 orderCount)",
+  "event Reclaimed(address indexed pool, uint256 orderCount, uint256 collateralFreed)",
   "event Redeemed(bytes32 indexed marketId, uint8 outcomeIdx, uint256 amount)",
   "event PositionsMinted(address indexed pool, uint256 amount)",
   "event Deposited(address indexed from, uint256 amount)",
@@ -607,16 +677,23 @@ function describe(name, args) {
   switch (name) {
     case "Traded": return "bought " + qty(args.quantity) +
       " at " + (Number(args.price) / 1e6).toFixed(2);
-    case "Reclaimed": return "freed escrow from " + args.orderCount.toString() + " expired order(s)";
+    case "Reclaimed": return "freed " + usd(args.collateralFreed) + " tUSDC of escrow from " + args.orderCount.toString() + " expired order(s)";
     case "Redeemed": return "claimed " + usd(args.amount) + " tUSDC from a settled market";
     case "PositionsMinted": return "minted a complete set of " + usd(args.amount) + " tUSDC";
     case "Deposited": return "deposit of " + usd(args.amount) + " tUSDC";
     case "Withdrawn": return "withdrawal of " + usd(args.amount) + " tUSDC";
     case "WokenByChain": return "the chain called the agent";
-    case "TradeSkipped": return "stood down: " + args.reason;
+    case "TradeSkipped":
+      // The venue's revert reason is not in the event. The one seen in practice is
+      // ImmediateOrCancelNoFill: the agent only ever takes, never rests, so an empty book
+      // at the open is a rejection rather than a resting order.
+      return "stood down: " + args.reason +
+        (args.reason === "pool rejected the order" ? " (an immediate-or-cancel bid with nothing to take, the usual case in the first second of a window)" : "");
     case "RolledForward": {
-      const mins = Math.max(0, Math.round((Number(args.expiry) - Date.now() / 1000) / 60));
-      return "moved itself onto a new window, " + mins + " min left on it";
+      // Settlement is a fixed time, so say that. "N minutes left" goes stale the moment the
+      // row is older than the window, and every row in this panel is.
+      const at = new Date(Number(args.expiry) * 1000).toLocaleTimeString(undefined, {hour: "2-digit", minute: "2-digit"});
+      return "moved itself onto a new window that settles at " + at;
     }
     case "RollSkipped": return "looked at a new window and passed: " + args.reason;
     default: return "";
@@ -668,18 +745,212 @@ async function loadVerify() {
     $("vTrade").textContent = trades.toString();
     $("vRoll").textContent = rolls.toString();
     $("vStamp").textContent = "read from the chain at " + new Date().toLocaleTimeString();
+    loadArmSince(ids).catch(() => { $("armSince").hidden = true; });
   } catch (e) {
     $("armState").textContent = "Could not reach the node.";
     $("armState").className = "vstate idle";
     $("armNote").textContent = String(e.message || e).slice(0, 160);
   }
   // Filled orders come from DreamDEX's own indexer, so this number is the venue's record of
-  // the agent rather than the agent's record of itself.
+  // the agent rather than the agent's record of itself. Counted over the whole history, not
+  // the dozen rows the activity panel shows.
   try {
-    const orders = await ordersFromIndexer();
+    const q = `query { Order(where: {owner: {_eq: "${CFG.agent.toLowerCase()}"}}, limit: 5000) { status } }`;
+    const r = await fetch(CFG.indexer, {
+      method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({query: q}),
+    });
+    const j = await r.json();
+    const orders = (j.data && j.data.Order) || [];
     const filled = orders.filter((o) => String(o.status || "").toLowerCase().includes("fill")).length;
-    $("vFilled").textContent = filled > 0 ? String(filled) : String(orders.length);
+    $("vFilled").textContent = nf(filled);
   } catch (e) { $("vFilled").textContent = "·"; }
+}
+
+// ------------------------------------------------------------- historical state
+// Shannon makes ten blocks a second and serves state at any past block, so "what did the
+// counters say when judging closed" is a question the node answers directly. One estimate
+// from the block rate, one correction from the real timestamp of the block it lands on.
+const BLOCKS_PER_SEC = 10;
+let headCache = null;
+async function headBlock() {
+  if (headCache && Date.now() - headCache.at < 10000) return headCache;
+  const n = await provider.getBlockNumber();
+  const b = await provider.getBlock(n);
+  headCache = { number: n, ts: b.timestamp, at: Date.now() };
+  return headCache;
+}
+async function blockAtTime(ts) {
+  const h = await headBlock();
+  if (ts >= h.ts) return h.number;
+  let est = h.number - Math.round((h.ts - ts) * BLOCKS_PER_SEC);
+  let b = await provider.getBlock(est);
+  est += Math.round((ts - b.timestamp) * BLOCKS_PER_SEC);
+  est = Math.max(window.VANE_DEPLOY_BLOCK || 0, Math.min(h.number, est));
+  // Settle on the first block at or after the instant, so two page loads name the same
+  // block rather than drifting by one with the head's own timing. Ten blocks share each
+  // second, so a short binary search around the estimate finds it in a handful of reads.
+  let lo = Math.max(window.VANE_DEPLOY_BLOCK || 0, est - 60), hi = Math.min(h.number, est + 60);
+  const tsOf = async (n) => (await provider.getBlock(n)).timestamp;
+  if (await tsOf(lo) >= ts) return lo;
+  if (await tsOf(hi) < ts) return hi;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (await tsOf(mid) >= ts) hi = mid; else lo = mid;
+  }
+  return hi;
+}
+// The counters, read at one block. Before the agent existed they are all zero.
+async function countersAt(blockTag) {
+  if (window.VANE_DEPLOY_BLOCK && blockTag < window.VANE_DEPLOY_BLOCK) return { wake: 0, roll: 0, trade: 0, redeem: 0 };
+  const o = { blockTag };
+  const [wake, roll, trade, redeem] = await Promise.all([
+    agent.wakeCount(o), agent.rollCount(o), agent.tradeCount(o), agent.redeemCount(o),
+  ]);
+  return { wake: Number(wake), roll: Number(roll), trade: Number(trade), redeem: Number(redeem) };
+}
+const nf = (n) => Number(n).toLocaleString();
+const ago = (secs) => {
+  const d = Math.floor(secs / 86400), h = Math.floor((secs % 86400) / 3600), m = Math.floor((secs % 3600) / 60);
+  return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : m + "m";
+};
+
+// ---------------------------------------------------------------- since close
+async function loadSince() {
+  const close = window.VANE_CLOSE;
+  if (!close) return;
+  try {
+    const closeTs = Math.floor(Date.parse(close.time) / 1000);
+    const h = await headBlock();
+    const closeBlk = await blockAtTime(closeTs);
+    const [then, now] = await Promise.all([countersAt(closeBlk), countersAt(h.number)]);
+    const days = (h.ts - closeTs) / 86400;
+    const put = (id, d, unit) => {
+      $(id).innerHTML = "+" + nf(d) + (unit ? ' <small>' + unit + '</small>' : "");
+      $(id + "Note").textContent = nf(then[id === "dWake" ? "wake" : id === "dRoll" ? "roll" : id === "dTrade" ? "trade" : "redeem"]) +
+        " at close, " + (days > 0 ? (d / days).toFixed(d / days >= 10 ? 0 : 1) + " a day since" : "");
+    };
+    put("dWake", now.wake - then.wake);
+    put("dRoll", now.roll - then.roll);
+    put("dTrade", now.trade - then.trade);
+    put("dRedeem", now.redeem - then.redeem);
+    $("sinceLede").innerHTML =
+      "Judging closed on <b>" + close.label + "</b>. That is block <b>" + nf(closeBlk) + "</b>, and the " +
+      "counters below are read from the chain at that block and again at block " + nf(h.number) + ", " +
+      "<b>" + ago(h.ts - closeTs) + "</b> later. Wakes and windows can only be moved by the reactivity " +
+      "precompile, so those two are the chain's work alone. The settled winnings were swept on 14 Sep by a " +
+      "call anyone may make; the positions behind them were the agent's.";
+  } catch (e) {
+    $("sinceLede").textContent = "Could not read historical state from the node right now.";
+  }
+}
+
+// ------------------------------------------------------------- armed since
+// The arming transactions are fixed points too. If the node is holding exactly the
+// subscriptions those transactions created, the clock since them is the unattended run.
+async function loadArmSince(ids) {
+  const arm = window.VANE_ARM;
+  const el = $("armSince");
+  if (!arm || !ids || !ids.length) { el.hidden = true; return; }
+  const live = ids.map((x) => BigInt(x).toString()).sort().join(",");
+  const known = arm.subs.map((x) => BigInt(x).toString()).sort().join(",");
+  if (live !== known) { el.hidden = true; return; }
+  const h = await headBlock();
+  const since = Math.floor(Date.parse(arm.time) / 1000);
+  const d = new Date(arm.time);
+  el.innerHTML = "Armed <b>" + ago(h.ts - since) + " ago</b>, on " +
+    d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" }) +
+    ", by two transactions (" + arm.txs.map((t, i) => '<a href="' + CFG.explorer + "/tx/" + t + '" target="_blank" rel="noopener">' + (i + 1) + '</a>').join(", ") +
+    "). Every wake since then was the chain calling the contract on its own.";
+  el.hidden = false;
+}
+
+// ----------------------------------------------------------------- daily chart
+// One read of the four counters at each UTC midnight, starting the day the agent was deployed
+// (or 44 days ago, whichever is later), so a bar is the difference between two facts, not a
+// tally kept by this page.
+let dailyDone = false;
+async function loadDaily() {
+  if (dailyDone) return;
+  try {
+    const h = await headBlock();
+    const deployBlk = window.VANE_DEPLOY_BLOCK;
+    const deployB = await provider.getBlock(deployBlk);
+    const day0 = Math.floor(deployB.timestamp / 86400) * 86400;
+    const closeTs = window.VANE_CLOSE ? Math.floor(Date.parse(window.VANE_CLOSE.time) / 1000) : null;
+    const edges = [];
+    for (let t = day0; t < h.ts; t += 86400) edges.push(t);
+    edges.push(h.ts);
+    // About six weeks of bars is the most the panel can hold legibly; once the run is longer
+    // than that the oldest days drop off the left and the first bar is no longer deploy day.
+    while (edges.length > 45) edges.shift();
+    const blocks = await Promise.all(edges.map((t) => blockAtTime(t)));
+    const reads = await Promise.all(blocks.map((b) => countersAt(b)));
+    const days = [];
+    for (let i = 1; i < reads.length; i++) {
+      const partial = i === reads.length - 1;
+      days.push({
+        start: edges[i - 1], end: edges[i], partial,
+        wake: reads[i].wake - reads[i - 1].wake,
+        roll: reads[i].roll - reads[i - 1].roll,
+        trade: reads[i].trade - reads[i - 1].trade,
+      });
+    }
+    drawBars("cWake", "cWakeLead", days, "wake", closeTs);
+    drawBars("cRoll", "cRollLead", days, "roll", closeTs);
+    drawBars("cTrade", "cTradeLead", days, "trade", closeTs);
+    dailyDone = true;
+  } catch (e) {
+    $("chartNote").textContent = "Could not read historical state from the node right now: " + String(e.message || e).slice(0, 120);
+  }
+}
+const dayLabel = (ts) => new Date(ts * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+function drawBars(svgId, leadId, days, key, closeTs) {
+  const svg = $(svgId);
+  const W = 320, H = 120, top = 8, bottom = 18, left = 2, right = 2;
+  const n = days.length, gap = 2;
+  const bw = (W - left - right - gap * (n - 1)) / n;
+  const max = Math.max(1, ...days.map((d) => d[key]));
+  const y = (v) => top + (H - top - bottom) * (1 - v / max);
+  let s = "";
+  days.forEach((d, i) => {
+    const x = left + i * (bw + gap), v = d[key];
+    const hgt = Math.max(v > 0 ? 1 : 0, (H - top - bottom) * v / max);
+    s += '<rect class="bar' + (d.partial ? " today" : "") + '" x="' + x.toFixed(2) + '" y="' + (H - bottom - hgt).toFixed(2) +
+      '" width="' + bw.toFixed(2) + '" height="' + hgt.toFixed(2) + '" data-i="' + i + '"></rect>';
+  });
+  // the close of judging, placed by time across the day it fell in
+  if (closeTs) {
+    const i = days.findIndex((d) => closeTs >= d.start && closeTs < d.end);
+    if (i >= 0) {
+      const frac = (closeTs - days[i].start) / (days[i].end - days[i].start);
+      const x = left + i * (bw + gap) + bw * frac;
+      s += '<line class="closeline" x1="' + x.toFixed(2) + '" x2="' + x.toFixed(2) + '" y1="' + (top - 4) + '" y2="' + (H - bottom) + '"></line>';
+    }
+  }
+  s += '<line class="axis" x1="0" x2="' + W + '" y1="' + (H - bottom) + '" y2="' + (H - bottom) + '"></line>';
+  s += '<text class="lbl" x="' + left + '" y="' + (H - 4) + '">' + dayLabel(days[0].start) + '</text>';
+  s += '<text class="lbl" x="' + (W - right) + '" y="' + (H - 4) + '" text-anchor="end">today</text>';
+  // one direct label, on the biggest bar, so the scale is readable without an axis
+  const bi = days.reduce((a, d, i) => (d[key] > days[a][key] ? i : a), 0);
+  const bx = left + bi * (bw + gap) + bw / 2;
+  s += '<text class="lbl hi" x="' + bx.toFixed(2) + '" y="' + (y(days[bi][key]) - 3).toFixed(2) + '" text-anchor="middle">' + nf(days[bi][key]) + '</text>';
+  svg.innerHTML = s;
+  const full = days.filter((d) => !d.partial);
+  const avg = full.length ? full.reduce((a, d) => a + d[key], 0) / full.length : 0;
+  $(leadId).innerHTML = nf(Math.round(avg)) + '<small>average on a full day</small>';
+
+  const tip = $("tip");
+  svg.addEventListener("mousemove", (ev) => {
+    const r = ev.target.closest("rect.bar");
+    if (!r) { tip.className = "tip"; return; }
+    const d = days[Number(r.dataset.i)];
+    tip.textContent = dayLabel(d.start) + (d.partial ? " so far" : "") + ": " + nf(d[key]);
+    const box = $("charts").getBoundingClientRect();
+    tip.style.left = (ev.clientX - box.left) + "px";
+    tip.style.top = (ev.clientY - box.top - 6) + "px";
+    tip.className = "tip on";
+  });
+  svg.addEventListener("mouseleave", () => { tip.className = "tip"; });
 }
 
 let feedBusy = false;
@@ -692,20 +963,55 @@ async function loadFeed() {
     const raw = [];
     // The node caps getLogs at 1000 blocks per call and Somnia makes about ten blocks a
     // second, so walk back in windows and stop as soon as there is something notable.
+    const seen = new Set();
+    let scannedTo = head;
     for (let i = 0; i < 10; i++) {
       const to = head - i * 1000, from = to - 999;
       let logs = [];
       try { logs = await provider.getLogs({address: CFG.agent, fromBlock: from, toBlock: to}); }
       catch (e) { continue; }
+      scannedTo = from;
       for (const l of logs.reverse()) {
         try {
           const d = agent.interface.parseLog(l);
           if (!d) continue;
+          seen.add(l.transactionHash + ":" + l.index);
           raw.push({name: d.name, text: describe(d.name, d.args), blk: l.blockNumber, tx: l.transactionHash});
         } catch (e) {}
       }
       if (raw.filter((r) => !ROUTINE[r.name]).length >= 4) break;
     }
+    // The walk above sees every event, wakes included, so it cannot go far. Trades and rolls
+    // are rare by comparison, so ask for those alone over a longer stretch, ten windows at a
+    // time, until there are enough to tell the story of the last hour or two.
+    const notableTopics = ["Traded", "RolledForward", "Redeemed", "Reclaimed", "PositionsMinted"]
+      .map((n) => agent.interface.getEvent(n).topicHash);
+    let cursor = scannedTo - 1;
+    for (let batch = 0; batch < 8 && raw.filter((r) => !ROUTINE[r.name]).length < 10; batch++) {
+      const calls = [];
+      for (let i = 0; i < 10; i++) {
+        const to = cursor - i * 1000, from = to - 999;
+        calls.push(provider.getLogs({address: CFG.agent, fromBlock: from, toBlock: to, topics: [notableTopics]}).catch(() => []));
+      }
+      const results = await Promise.all(calls);
+      for (const logs of results) for (const l of logs.reverse()) {
+        try {
+          const d = agent.interface.parseLog(l);
+          // One sweep redeems several positions in one transaction, so the key is the log, not the tx.
+          if (!d || seen.has(l.transactionHash + ":" + l.index)) continue;
+          seen.add(l.transactionHash + ":" + l.index);
+          raw.push({name: d.name, text: describe(d.name, d.args), blk: l.blockNumber, tx: l.transactionHash});
+        } catch (e) {}
+      }
+      cursor -= 10 * 1000;
+    }
+    raw.sort((a, b) => b.blk - a.blk);
+    // Block numbers mean nothing to a reader. Ten blocks a second turns them into a clock.
+    const h = await headBlock();
+    const when = (blk) => {
+      const t = new Date((h.ts - (h.number - blk) / BLOCKS_PER_SEC) * 1000);
+      return '<span title="block ' + blk + '">' + t.toLocaleTimeString(undefined, {hour: "2-digit", minute: "2-digit"}) + "</span>";
+    };
 
     // Keep every notable event, but let at most three routine ones through per run and
     // summarise the rest, so a halted agent does not bury its own history.
@@ -713,17 +1019,17 @@ async function loadFeed() {
     let run = 0, hidden = 0, hiddenBlk = null;
     const flush = () => {
       if (hidden > 0) rows.push(feedRow("×" + hidden, "wake",
-        "more wake and stand-down events in the same window", hiddenBlk,
+        "more wake and stand-down events in the same window", when(hiddenBlk),
         CFG.explorer + "/address/" + CFG.agent));
       run = 0; hidden = 0; hiddenBlk = null;
     };
     for (const r of raw) {
       if (ROUTINE[r.name]) {
-        if (run < 3) { rows.push(feedRow(r.name, TAGS[r.name] || "", r.text, r.blk, CFG.explorer + "/tx/" + r.tx)); run++; }
+        if (run < 3) { rows.push(feedRow(r.name, TAGS[r.name] || "", r.text, when(r.blk), CFG.explorer + "/tx/" + r.tx)); run++; }
         else { hidden++; hiddenBlk = r.blk; }
       } else {
         flush();
-        rows.push(feedRow(r.name, TAGS[r.name] || "", r.text, r.blk, CFG.explorer + "/tx/" + r.tx));
+        rows.push(feedRow(r.name, TAGS[r.name] || "", r.text, when(r.blk), CFG.explorer + "/tx/" + r.tx));
       }
     }
     flush();
@@ -732,7 +1038,7 @@ async function loadFeed() {
     // before the wakes do. Whenever nothing notable is left in the tail, show the order
     // history the DreamDEX indexer keeps permanently, so this panel is never thin.
     const notable = raw.filter((r) => !ROUTINE[r.name]).length;
-    let html = rows.slice(0, 16).join("");
+    let html = rows.slice(0, 24).join("");
     if (!notable) {
       const orders = await ordersFromIndexer();
       if (orders.length) {
@@ -811,9 +1117,10 @@ $("copyCmd").addEventListener("click", async () => {
   setTimeout(() => { btn.textContent = "Copy"; }, 1600);
 });
 
-function refresh() { loadVerify(); loadProof(); loadAgent(); loadMarket(); loadFeed(); }
+function refresh() { loadVerify(); loadProof(); loadAgent(); loadMarket(); loadFeed(); loadSince(); loadDaily(); }
 refresh();
 setInterval(() => { loadVerify(); loadProof(); loadAgent(); }, 15000);
+setInterval(loadSince, 60000);
 setInterval(loadFeed, 60000);
 setInterval(loadMarket, 60000);
 </script>
